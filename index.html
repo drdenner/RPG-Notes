@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RPG Noter</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="app-title">⚔ RPG Noter</h1>
+    <nav class="view-tabs">
+      <button id="tab-list-btn" class="tab-btn">Liste</button>
+      <button id="tab-mindmap-btn" class="tab-btn">Mindmap</button>
+    </nav>
+    <div class="io-actions">
+      <div class="drive-status" title="">
+        <span id="drive-dot" class="drive-dot"></span>
+        <span id="drive-status-text">Drive: ikke forbundet</span>
+      </div>
+      <button id="drive-connect-btn" class="btn">Forbind Drive</button>
+      <button id="drive-sync-btn" class="btn" hidden>Synkronisér nu</button>
+      <button id="drive-disconnect-btn" class="btn" hidden>Afbryd Drive</button>
+      <button id="export-btn" class="btn">Eksportér</button>
+      <button id="import-btn" class="btn">Importér</button>
+      <input type="file" id="import-input" accept="application/json" hidden>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section id="tree-view" class="view">
+      <div class="view-toolbar">
+        <button id="tree-new-root-btn" class="btn btn-primary">+ Ny rod-node</button>
+        <span class="mindmap-hint">Træk i ⠿ for at flytte en node</span>
+      </div>
+      <ul id="tree-list" class="tree-list"></ul>
+    </section>
+
+    <section id="mindmap-view" class="view">
+      <div class="mindmap-toolbar">
+        <button id="mindmap-new-root-btn" class="btn btn-primary">+ Ny rod-node</button>
+        <span class="mindmap-hint">Rul eller knib sammen for at zoome · Træk tomt lærred for at panorere · + for underpunkt, ✕ for at slette · Dobbeltklik/dobbelttryk for at omdøbe</span>
+      </div>
+      <div id="mindmap-canvas" class="mindmap-canvas">
+        <div id="mindmap-world" class="mindmap-world">
+          <svg id="mindmap-svg" class="mindmap-svg"></svg>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="store.js"></script>
+  <script src="drive-sync.js"></script>
+  <script src="tree-view.js"></script>
+  <script src="mindmap-view.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
