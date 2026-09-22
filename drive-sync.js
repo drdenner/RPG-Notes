@@ -23,7 +23,7 @@
 // er 100% valgfrit, og alt gemmes stadig lokalt i localStorage.
 
 const DriveSync = (() => {
-  const CLIENT_ID = 'DIT-CLIENT-ID.apps.googleusercontent.com'; // <-- udfyld dette
+  const CLIENT_ID = '162521818251-4h6jcsqivhk66v0160l3u54sck8g16iq.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const FILE_NAME = 'rpg-notes.json';
   const FILE_ID_KEY = 'rpg-notes-drive-file-id';
