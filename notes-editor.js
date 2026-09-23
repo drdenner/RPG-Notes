@@ -6,6 +6,10 @@
 // tree-view.js and mindmap-view.js each add a notes button that calls
 // NotesEditor.open(nodeId).
 //
+// Explicit Save button - nothing is written to the Store until you click
+// it. Close always just hides the panel, with no side effects, so it can
+// never get stuck.
+//
 // Safety note: the raw text is stored as-is (see Store.updateNodeNotes).
 // Turning it into HTML always escapes the text FIRST and only then
 // re-introduces the two safe patterns below (**bold** and auto-links), so
@@ -14,9 +18,8 @@
 const NotesEditor = (() => {
   const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
 
-  let overlayEl, panelEl, titleEl, hintEl, textareaEl, previewLabelEl, previewEl, closeBtn;
+  let overlayEl, panelEl, titleEl, hintEl, textareaEl, previewLabelEl, previewEl, saveBtn, closeBtn;
   let currentId = null;
-  let isDirty = false;
   let built = false;
 
   function build() {
@@ -37,12 +40,23 @@ const NotesEditor = (() => {
     header.className = 'notes-header';
     titleEl = document.createElement('span');
     titleEl.className = 'notes-title';
+
+    const headerActions = document.createElement('div');
+    headerActions.className = 'notes-header-actions';
+
+    saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-primary notes-save-btn';
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', save);
+
     closeBtn = document.createElement('button');
     closeBtn.className = 'btn-icon';
     closeBtn.textContent = '✕';
     closeBtn.title = 'Close';
     closeBtn.addEventListener('click', close);
-    header.append(titleEl, closeBtn);
+
+    headerActions.append(saveBtn, closeBtn);
+    header.append(titleEl, headerActions);
 
     hintEl = document.createElement('div');
     hintEl.className = 'notes-hint';
@@ -50,10 +64,7 @@ const NotesEditor = (() => {
 
     textareaEl = document.createElement('textarea');
     textareaEl.className = 'notes-textarea';
-    textareaEl.addEventListener('input', () => {
-      isDirty = true;
-      updatePreview();
-    });
+    textareaEl.addEventListener('input', updatePreview);
 
     previewLabelEl = document.createElement('div');
     previewLabelEl.className = 'notes-preview-label';
@@ -74,6 +85,7 @@ const NotesEditor = (() => {
     textareaEl.hidden = !editable;
     hintEl.hidden = !editable;
     previewLabelEl.hidden = !editable;
+    saveBtn.hidden = !editable;
     previewEl.classList.toggle('notes-preview-full', !editable);
     updatePreview();
   }
@@ -85,13 +97,6 @@ const NotesEditor = (() => {
 
   function open(nodeId) {
     build();
-    // switching straight to a different node without closing first: still
-    // offer to save whatever was pending on the previous one
-    try {
-      maybeSaveBeforeLeaving();
-    } finally {
-      isDirty = false;
-    }
     currentId = nodeId;
     const node = Store.getById(nodeId);
     if (!node) return;
@@ -102,23 +107,22 @@ const NotesEditor = (() => {
     if (AppMode.isEditMode()) textareaEl.focus();
   }
 
-  function close() {
-    // the panel must always end up hidden, even if saving throws for some
-    // reason - closing should never get "stuck" behind a failed save
-    try {
-      maybeSaveBeforeLeaving();
-    } finally {
-      overlayEl.hidden = true;
-      currentId = null;
-      isDirty = false;
-    }
+  function save() {
+    if (!currentId) return;
+    Store.updateNodeNotes(currentId, textareaEl.value);
+    saveBtn.textContent = 'Saved ✓';
+    saveBtn.disabled = true;
+    setTimeout(() => {
+      saveBtn.textContent = 'Save';
+      saveBtn.disabled = false;
+    }, 900);
   }
 
-  function maybeSaveBeforeLeaving() {
-    if (!isDirty || !currentId || !AppMode.isEditMode()) return;
-    if (confirm('Save changes to this note?')) {
-      Store.updateNodeNotes(currentId, textareaEl.value);
-    }
+  // always just hides the panel - no saving, no confirmation, nothing that
+  // could fail and leave the panel stuck open
+  function close() {
+    overlayEl.hidden = true;
+    currentId = null;
   }
 
   function escapeHtml(str) {

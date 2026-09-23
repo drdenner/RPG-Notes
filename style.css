@@ -584,6 +584,20 @@ body.view-mode .mindmap-node {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.notes-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.notes-save-btn {
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  min-width: 76px;
 }
 
 .notes-hint {
