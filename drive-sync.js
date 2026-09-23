@@ -1,8 +1,16 @@
 // drive-sync.js
-// Optional sync of the notes via a single JSON file in the user's own
-// Google Drive, so you can work on the same data across multiple devices
-// (e.g. pc and tablet). Uses the 'drive.file' scope, so the app can only
-// see/change files it created itself - not the rest of your Drive.
+// Optional sync of the notes via Google Drive, so you can work on the same
+// data across multiple devices (e.g. pc and tablet). Uses the 'drive.file'
+// scope, so the app can only see/change files it created itself - not the
+// rest of your Drive.
+//
+// Each campaign (see store.js) gets its own pair of files in the same
+// Drive folder: a main file that's kept in sync automatically on every
+// change, and a backup file that only ever changes when the Backup button
+// calls backupNow(). Switching the active campaign switches which pair of
+// files this module talks to (see the Store.subscribeCampaignChange hook
+// near the bottom) - campaigns never share or mix data on Drive, same as
+// they never do locally.
 //
 // ONE-TIME SETUP (done once, by you):
 //   1. Go to https://console.cloud.google.com/ and create a project
@@ -22,26 +30,24 @@
 //
 // Without a valid Client ID, the rest of the app works exactly as before -
 // Drive is 100% optional, everything still saves locally in localStorage.
-//
-// There are two separate files in the Drive folder: FILE_NAME is kept in
-// sync automatically on every change, while BACKUP_FILE_NAME is a manual
-// snapshot that only ever changes when the Backup button calls backupNow().
 
 const DriveSync = (() => {
   const CLIENT_ID = '162521818251-4h6jcsqivhk66v0160l3u54sck8g16iq.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
-  const FILE_NAME = 'rpg-notes.json';
-  const BACKUP_FILE_NAME = 'rpg-notes-backup.json'; // only ever written by the Backup button, never by auto-sync
-  const FOLDER_NAME = 'RPG Notes'; // the Drive folder the file lives in - change here for a different name
-  const FILE_ID_KEY = 'rpg-notes-drive-file-id';
-  const BACKUP_FILE_ID_KEY = 'rpg-notes-drive-backup-file-id';
+  const FOLDER_NAME = 'RPG Notes'; // the Drive folder every campaign's files live in
   const FOLDER_ID_KEY = 'rpg-notes-drive-folder-id';
   const UPLOAD_DEBOUNCE_MS = 10000;
 
+  function fileNameFor(campaignId) { return `rpg-notes-${campaignId}.json`; }
+  function backupFileNameFor(campaignId) { return `rpg-notes-${campaignId}-backup.json`; }
+  function fileIdKeyFor(campaignId) { return 'rpg-notes-drive-file-id-' + campaignId; }
+  function backupFileIdKeyFor(campaignId) { return 'rpg-notes-drive-backup-file-id-' + campaignId; }
+
   let tokenClient = null;
   let accessToken = null;
-  let fileId = localStorage.getItem(FILE_ID_KEY) || null;
-  let backupFileId = localStorage.getItem(BACKUP_FILE_ID_KEY) || null;
+  let syncedCampaignId = Store.getCurrentCampaignId();
+  let fileId = localStorage.getItem(fileIdKeyFor(syncedCampaignId)) || null;
+  let backupFileId = localStorage.getItem(backupFileIdKeyFor(syncedCampaignId)) || null;
   let folderId = localStorage.getItem(FOLDER_ID_KEY) || null;
   let uploadTimer = null;
   let refreshPromise = null;
@@ -70,7 +76,7 @@ const DriveSync = (() => {
         callback: onTokenResponse
       });
       setStatus('disconnected');
-      // used Drive before on this device? try a silent reconnect
+      // used Drive before on this device (for this campaign)? try a silent reconnect
       if (fileId) {
         tokenClient.requestAccessToken({ prompt: '' });
       }
@@ -113,7 +119,7 @@ const DriveSync = (() => {
       // was used -> forget the saved file reference and try a fresh one
       if (String(err.message).includes('404') && fileId) {
         fileId = null;
-        localStorage.removeItem(FILE_ID_KEY);
+        localStorage.removeItem(fileIdKeyFor(Store.getCurrentCampaignId()));
         try {
           await ensureFile();
           await pull();
@@ -147,42 +153,30 @@ const DriveSync = (() => {
   }
 
   async function ensureFile() {
+    const campaignId = Store.getCurrentCampaignId();
     const folder = await ensureFolder();
 
     if (fileId) {
       // already know the file - make sure it actually lives in the folder
-      // (e.g. moves an older file that was created in the root before the
-      // folder existed)
       await moveFileToFolder(fileId, folder);
       return;
     }
 
-    const foundInFolder = await findFileByName(FILE_NAME, folder);
-    if (foundInFolder) {
-      fileId = foundInFolder;
-    } else {
-      // fallback: a file created before folder support existed might still
-      // be sitting somewhere else on Drive - reuse it instead of creating a
-      // new one (and ending up with two copies of the notes)
-      const foundAnywhere = await findFileByName(FILE_NAME, null);
-      if (foundAnywhere) {
-        fileId = foundAnywhere;
-        await moveFileToFolder(fileId, folder);
-      } else {
-        fileId = await createFileByName(FILE_NAME, folder);
-      }
-    }
-    localStorage.setItem(FILE_ID_KEY, fileId);
+    const found = await findFileByName(fileNameFor(campaignId), folder);
+    fileId = found || await createFileByName(fileNameFor(campaignId), folder);
+    localStorage.setItem(fileIdKeyFor(campaignId), fileId);
   }
 
   // the backup file is separate from the main synced file and only ever
   // written by the Backup button (see backupNow) - never by auto-sync
   async function ensureBackupFile() {
     if (backupFileId) return backupFileId;
+    const campaignId = Store.getCurrentCampaignId();
     const folder = await ensureFolder();
-    const found = await findFileByName(BACKUP_FILE_NAME, folder);
-    backupFileId = found || await createFileByName(BACKUP_FILE_NAME, folder);
-    localStorage.setItem(BACKUP_FILE_ID_KEY, backupFileId);
+
+    const found = await findFileByName(backupFileNameFor(campaignId), folder);
+    backupFileId = found || await createFileByName(backupFileNameFor(campaignId), folder);
+    localStorage.setItem(backupFileIdKeyFor(campaignId), backupFileId);
     return backupFileId;
   }
 
@@ -317,6 +311,30 @@ const DriveSync = (() => {
 
   // any change to the notes (create/rename/delete/move) should end up in Drive
   Store.subscribe(scheduleUpload);
+
+  // switching the active campaign means switching which pair of Drive files
+  // this module talks to. Ignored if the "change" wasn't actually a switch
+  // (e.g. just renaming the current campaign fires the same event).
+  Store.subscribeCampaignChange(async () => {
+    const newCampaignId = Store.getCurrentCampaignId();
+    if (newCampaignId === syncedCampaignId) return;
+    syncedCampaignId = newCampaignId;
+
+    clearTimeout(uploadTimer);
+    fileId = localStorage.getItem(fileIdKeyFor(newCampaignId)) || null;
+    backupFileId = localStorage.getItem(backupFileIdKeyFor(newCampaignId)) || null;
+
+    if (!accessToken) return; // not connected - nothing to sync right now
+    setStatus('connecting');
+    try {
+      await ensureFile();
+      await pull();
+      setStatus('connected');
+    } catch (err) {
+      console.error('Drive sync failed after switching campaign', err);
+      setStatus('error', err.message);
+    }
+  });
 
   return { init, connect, disconnect, syncNow, backupNow, isConfigured };
 })();

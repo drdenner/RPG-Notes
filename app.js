@@ -18,7 +18,53 @@ document.addEventListener('DOMContentLoaded', () => {
     MindmapView.render();
   }
   Store.subscribe(renderAll);
+  Store.subscribeCampaignChange(renderAll);
   renderAll();
+
+  // --- campaign switcher: multiple independent campaigns, one active at a time ---
+  const campaignSelect = document.getElementById('campaign-select');
+  const campaignNewBtn = document.getElementById('campaign-new-btn');
+  const campaignRenameBtn = document.getElementById('campaign-rename-btn');
+  const campaignDeleteBtn = document.getElementById('campaign-delete-btn');
+
+  function updateCampaignUI() {
+    const campaigns = Store.listCampaigns();
+    const currentId = Store.getCurrentCampaignId();
+    campaignSelect.innerHTML = '';
+    campaigns.forEach(c => {
+      const option = document.createElement('option');
+      option.value = c.id;
+      option.textContent = c.name;
+      if (c.id === currentId) option.selected = true;
+      campaignSelect.appendChild(option);
+    });
+    campaignDeleteBtn.disabled = campaigns.length <= 1;
+  }
+
+  campaignSelect.addEventListener('change', () => {
+    Store.switchCampaign(campaignSelect.value);
+  });
+
+  campaignNewBtn.addEventListener('click', () => {
+    const name = prompt('Campaign name:');
+    if (name && name.trim()) Store.createCampaign(name.trim());
+  });
+
+  campaignRenameBtn.addEventListener('click', () => {
+    const name = prompt('New name:', Store.getCurrentCampaignName());
+    if (name && name.trim()) Store.renameCampaign(Store.getCurrentCampaignId(), name.trim());
+  });
+
+  campaignDeleteBtn.addEventListener('click', () => {
+    const name = Store.getCurrentCampaignName();
+    if (!confirm(`Delete campaign "${name}"? This cannot be undone.`)) return;
+    if (!Store.deleteCampaign(Store.getCurrentCampaignId())) {
+      alert('You can\'t delete your only campaign.');
+    }
+  });
+
+  Store.subscribeCampaignChange(updateCampaignUI);
+  updateCampaignUI();
 
   // --- switch between List and Mindmap tabs (same underlying data) ---
   function showView(name) {
@@ -48,9 +94,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const json = Store.exportJSON();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
+    const safeName = Store.getCurrentCampaignName().replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'campaign';
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'rpg-notes.json';
+    a.download = `rpg-notes-${safeName}.json`;
     a.click();
     URL.revokeObjectURL(url);
   });

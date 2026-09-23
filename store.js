@@ -1,5 +1,10 @@
 // store.js
-// Flat data model for RPG notes, persisted to localStorage.
+// Flat data model for RPG notes, persisted to localStorage. Supports
+// multiple independent campaigns - each campaign has its own node list,
+// its own storage key, and (via drive-sync.js) its own file on Google
+// Drive. Exactly one campaign is "current" at a time; all the node
+// functions below (addNode, getAll, exportJSON, etc.) always operate on
+// whichever campaign is currently active.
 //
 // ============================================================================
 // DATA FORMAT (this is the contract - keep it stable, it's what Export,
@@ -8,7 +13,7 @@
 // ============================================================================
 //
 // An export file (Store.exportJSON(), also what ends up in the synced
-// rpg-notes.json on Google Drive) looks like:
+// rpg-notes-<campaignId>.json on Google Drive) looks like:
 //
 //   {
 //     "schemaVersion": 1,
@@ -16,6 +21,9 @@
 //     "exportedAt": "2026-01-01T12:00:00.000Z",
 //     "nodes": [ <node>, <node>, ... ]
 //   }
+//
+// It only ever contains ONE campaign's nodes (the currently active one) -
+// campaigns are never mixed together in a single export file.
 //
 // Store.importJSON() requires this envelope shape (a "nodes" array) - it
 // does not accept a bare array of nodes.
@@ -45,49 +53,88 @@
 // of this app can add fields without older exports losing them.
 //
 // Want to extend the data model later (e.g. tags, color, node type)? Add
-// the fields here, in seedDefaultData, and in the normalization step inside
-// importJSON.
+// the fields here, in seedDefaultNodes, and in the normalization step
+// inside importJSON.
 
 const Store = (() => {
-  const STORAGE_KEY = 'rpg-notes';
+  const CAMPAIGNS_KEY = 'rpg-notes-campaigns'; // [{id, name}, ...]
+  const CURRENT_CAMPAIGN_KEY = 'rpg-notes-current-campaign';
   const SCHEMA_VERSION = 1;
 
+  let campaigns = [];
+  let currentCampaignId = null;
   let nodes = [];
-  const listeners = [];
+  const dataListeners = [];     // fired on real data mutations (add/rename/delete/move/notes)
+  const campaignListeners = []; // fired when the active campaign changes (switch/create/delete)
+
+  function dataKey(campaignId) {
+    return 'rpg-notes-data-' + campaignId;
+  }
 
   function generateId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   }
 
-  // saves and notifies every subscriber (views) that data changed
+  // saves and notifies every subscriber (views, Drive sync) that data changed
   function notify() {
     save();
-    listeners.forEach(fn => fn());
+    dataListeners.forEach(fn => fn());
+  }
+
+  // notifies subscribers that the ACTIVE campaign changed (not its data) -
+  // used by drive-sync.js to know when to switch which Drive file it syncs
+  function notifyCampaignChanged() {
+    campaignListeners.forEach(fn => fn());
   }
 
   // --- persistence ---
 
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nodes));
+    localStorage.setItem(dataKey(currentCampaignId), JSON.stringify(nodes));
+    saveCampaignRegistry();
+  }
+
+  function saveCampaignRegistry() {
+    localStorage.setItem(CAMPAIGNS_KEY, JSON.stringify(campaigns));
+    localStorage.setItem(CURRENT_CAMPAIGN_KEY, currentCampaignId);
+  }
+
+  function loadCampaignNodes(campaignId) {
+    const raw = localStorage.getItem(dataKey(campaignId));
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      console.error('Could not read saved notes for this campaign, starting fresh.', e);
+      return [];
+    }
   }
 
   function load() {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        nodes = JSON.parse(raw);
-      } catch (e) {
-        console.error('Could not read saved notes, starting fresh.', e);
-        nodes = [];
-      }
+    const rawCampaigns = localStorage.getItem(CAMPAIGNS_KEY);
+    if (rawCampaigns) {
+      try { campaigns = JSON.parse(rawCampaigns); } catch (e) { campaigns = []; }
     }
-    if (nodes.length === 0) {
-      seedDefaultData();
+
+    if (!Array.isArray(campaigns) || campaigns.length === 0) {
+      // no campaigns yet - start fresh with one example campaign
+      const id = generateId();
+      campaigns = [{ id, name: 'My Campaign' }];
+      currentCampaignId = id;
+      nodes = seedDefaultNodes();
+      save();
+      return;
     }
+
+    currentCampaignId = localStorage.getItem(CURRENT_CAMPAIGN_KEY);
+    if (!currentCampaignId || !campaigns.find(c => c.id === currentCampaignId)) {
+      currentCampaignId = campaigns[0].id;
+    }
+    nodes = loadCampaignNodes(currentCampaignId);
   }
 
-  function seedDefaultData() {
+  function seedDefaultNodes() {
     const root = {
       id: generateId(),
       name: 'My Campaign',
@@ -96,14 +143,79 @@ const Store = (() => {
     };
     const chapter = { id: generateId(), name: 'Chapter 1: The Arrival', notes: '', parentId: root.id, x: 260, y: 240 };
     const npc = { id: generateId(), name: 'NPC: Innkeeper Borin', notes: '', parentId: chapter.id, x: 140, y: 400 };
-    nodes = [root, chapter, npc];
-    save();
+    return [root, chapter, npc];
   }
 
-  // --- subscriptions, so views can react to changes ---
+  // --- subscriptions, so views (and Drive sync) can react to changes ---
 
   function subscribe(fn) {
-    listeners.push(fn);
+    dataListeners.push(fn);
+  }
+
+  function subscribeCampaignChange(fn) {
+    campaignListeners.push(fn);
+  }
+
+  // --- campaigns ---
+
+  function listCampaigns() {
+    return campaigns.map(c => ({ ...c }));
+  }
+
+  function getCurrentCampaignId() {
+    return currentCampaignId;
+  }
+
+  function getCurrentCampaignName() {
+    const c = campaigns.find(c => c.id === currentCampaignId);
+    return c ? c.name : '';
+  }
+
+  // creates a new, EMPTY campaign and switches to it
+  function createCampaign(name) {
+    const id = generateId();
+    campaigns.push({ id, name: (name || '').trim() || 'New campaign' });
+    currentCampaignId = id;
+    nodes = [];
+    save();
+    notifyCampaignChanged();
+    return id;
+  }
+
+  function switchCampaign(id) {
+    if (id === currentCampaignId) return;
+    if (!campaigns.find(c => c.id === id)) return;
+    currentCampaignId = id;
+    nodes = loadCampaignNodes(id);
+    saveCampaignRegistry();
+    notifyCampaignChanged();
+  }
+
+  function renameCampaign(id, newName) {
+    const c = campaigns.find(c => c.id === id);
+    if (!c) return;
+    c.name = (newName || '').trim() || c.name;
+    saveCampaignRegistry();
+    notifyCampaignChanged(); // lets the UI refresh the campaign's displayed name
+  }
+
+  // returns false (and does nothing) if this is the only campaign left -
+  // there must always be at least one
+  function deleteCampaign(id) {
+    if (campaigns.length <= 1) return false;
+    const idx = campaigns.findIndex(c => c.id === id);
+    if (idx === -1) return false;
+
+    campaigns.splice(idx, 1);
+    localStorage.removeItem(dataKey(id));
+
+    if (currentCampaignId === id) {
+      currentCampaignId = campaigns[0].id;
+      nodes = loadCampaignNodes(currentCampaignId);
+    }
+    saveCampaignRegistry();
+    notifyCampaignChanged();
+    return true;
   }
 
   // --- reads ---
@@ -256,6 +368,8 @@ const Store = (() => {
   return {
     getAll, getById, getChildren, getRoots,
     addNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
-    save, load, subscribe, exportJSON, importJSON
+    save, load, subscribe, exportJSON, importJSON,
+    listCampaigns, getCurrentCampaignId, getCurrentCampaignName,
+    createCampaign, switchCampaign, renameCampaign, deleteCampaign, subscribeCampaignChange
   };
 })();

@@ -61,6 +61,27 @@ body {
   letter-spacing: 0.5px;
 }
 
+.campaign-switcher {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.campaign-select {
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  max-width: 160px;
+  touch-action: manipulation;
+}
+
+.campaign-select:hover {
+  border-color: var(--accent-gold);
+}
+
 .view-tabs {
   display: flex;
   gap: 6px;
@@ -130,6 +151,9 @@ body.view-mode .mindmap-node-del,
 body.view-mode .mindmap-node-add,
 body.view-mode #mindmap-new-root-btn,
 body.view-mode #import-btn,
+body.view-mode #campaign-new-btn,
+body.view-mode #campaign-rename-btn,
+body.view-mode #campaign-delete-btn,
 body.view-mode .mindmap-hint {
   display: none !important;
 }
@@ -188,6 +212,12 @@ body.view-mode .mindmap-node {
 .btn-icon:hover {
   background: var(--bg-elevated-hover);
   color: var(--text-main);
+}
+
+.btn-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
 }
 
 .btn-danger:hover {
