@@ -4,7 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RPG Notes</title>
-<link rel="stylesheet" href="style.css">
+<!--
+  Cache-busting: every local file below is loaded with a ?v=N query string.
+  Browsers (and GitHub Pages' CDN) cache these aggressively by URL, so after
+  editing ANY .js or .css file, bump this number (e.g. v=2 -> v=3) so the
+  browser sees a "new" URL and fetches the updated file instead of serving
+  a stale cached copy. Hard refresh (Ctrl+Shift+R) still works too, but this
+  means regular visits pick up updates without needing one.
+-->
+<link rel="stylesheet" href="style.css?v=1">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -55,12 +63,12 @@
     </section>
   </main>
 
-  <script src="store.js"></script>
-  <script src="app-mode.js"></script>
-  <script src="notes-editor.js"></script>
-  <script src="drive-sync.js"></script>
-  <script src="tree-view.js"></script>
-  <script src="mindmap-view.js"></script>
-  <script src="app.js"></script>
+  <script src="store.js?v=1"></script>
+  <script src="app-mode.js?v=1"></script>
+  <script src="notes-editor.js?v=1"></script>
+  <script src="drive-sync.js?v=1"></script>
+  <script src="tree-view.js?v=1"></script>
+  <script src="mindmap-view.js?v=1"></script>
+  <script src="app.js?v=1"></script>
 </body>
 </html>
