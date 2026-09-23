@@ -1,17 +1,22 @@
 // store.js
-// Flad data-model for RPG-noter, persisteret i localStorage.
+// Flat data model for RPG notes, persisted to localStorage.
 //
-// Node-form: { id, name, parentId, x, y }
-//   - parentId === null betyder at noden er en rod-node
-//   - children findes ALDRIG på noden selv, men udledes altid ved at
-//     filtrere hele listen på parentId (se getChildren)
-//   - x/y bruges kun af mindmap-visningen
+// Node shape: { id, name, notes, parentId, x, y }
+//   - parentId === null means the node is a root node
+//   - children are NEVER stored on the node itself, they're always derived
+//     by filtering the whole list on parentId (see getChildren)
+//   - notes is a small sanitized HTML string (bold text + links), edited
+//     via notes-editor.js
+//   - x/y are only used by the mindmap view
 //
-// Vil du udvide datamodellen senere (fx tags, farve, node-type), er det
-// her (og i seedDefaultData) du tilføjer felterne.
+// Want to extend the data model later (e.g. tags, color, node type)? Add
+// the fields here (and in seedDefaultData).
 
 const Store = (() => {
   const STORAGE_KEY = 'rpg-notes';
+  const ALLOWED_NOTE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'A', 'BR', 'DIV', 'P', 'SPAN', 'UL', 'OL', 'LI']);
+  const ALLOWED_URL_SCHEME = /^(https?:|mailto:)/i;
+
   let nodes = [];
   const listeners = [];
 
@@ -20,7 +25,7 @@ const Store = (() => {
     return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   }
 
-  // gemmer og informerer alle abonnenter (views) om at data er ændret
+  // saves and notifies every subscriber (views) that data changed
   function notify() {
     save();
     listeners.forEach(fn => fn());
@@ -38,7 +43,7 @@ const Store = (() => {
       try {
         nodes = JSON.parse(raw);
       } catch (e) {
-        console.error('Kunne ikke læse gemte noter, starter forfra.', e);
+        console.error('Could not read saved notes, starting fresh.', e);
         nodes = [];
       }
     }
@@ -48,20 +53,25 @@ const Store = (() => {
   }
 
   function seedDefaultData() {
-    const root = { id: generateId(), name: 'Min Kampagne', parentId: null, x: 420, y: 80 };
-    const chapter = { id: generateId(), name: 'Kapitel 1: Ankomsten', parentId: root.id, x: 260, y: 240 };
-    const npc = { id: generateId(), name: 'NPC: Kroværten Borin', parentId: chapter.id, x: 140, y: 400 };
+    const root = {
+      id: generateId(),
+      name: 'My Campaign',
+      notes: '<b>Welcome!</b> Click the notes button on any node to write rich text here - including <a href="https://example.com" target="_blank" rel="noopener noreferrer">links</a> that always open in a new tab.',
+      parentId: null, x: 420, y: 80
+    };
+    const chapter = { id: generateId(), name: 'Chapter 1: The Arrival', notes: '', parentId: root.id, x: 260, y: 240 };
+    const npc = { id: generateId(), name: 'NPC: Innkeeper Borin', notes: '', parentId: chapter.id, x: 140, y: 400 };
     nodes = [root, chapter, npc];
     save();
   }
 
-  // --- abonnement, så views kan reagere på ændringer ---
+  // --- subscriptions, so views can react to changes ---
 
   function subscribe(fn) {
     listeners.push(fn);
   }
 
-  // --- læsning ---
+  // --- reads ---
 
   function getAll() {
     return nodes.map(n => ({ ...n }));
@@ -80,7 +90,7 @@ const Store = (() => {
     return getChildren(null);
   }
 
-  // er `maybeAncestorId` forfader til (eller lig med) `id`?
+  // is `maybeAncestorId` an ancestor of (or equal to) `id`?
   function isAncestor(maybeAncestorId, id) {
     let current = nodes.find(n => n.id === id);
     while (current) {
@@ -90,13 +100,14 @@ const Store = (() => {
     return false;
   }
 
-  // --- skrivning ---
+  // --- writes ---
 
   function addNode(name, parentId = null) {
     const parent = parentId ? nodes.find(n => n.id === parentId) : null;
     const node = {
       id: generateId(),
-      name: name || 'Ny node',
+      name: name || 'New node',
+      notes: '',
       parentId: parent ? parent.id : null,
       x: parent ? parent.x + 120 + Math.random() * 40 : 300 + Math.random() * 200,
       y: parent ? parent.y + 100 + Math.random() * 40 : 80 + Math.random() * 200
@@ -113,7 +124,14 @@ const Store = (() => {
     notify();
   }
 
-  // sletter en node og alle dens underpunkter (rekursivt)
+  function updateNodeNotes(id, html) {
+    const node = nodes.find(n => n.id === id);
+    if (!node) return;
+    node.notes = sanitizeNotes(html);
+    notify();
+  }
+
+  // deletes a node and all its children (recursively)
   function deleteNode(id) {
     const toDelete = new Set([id]);
     let changed = true;
@@ -134,13 +152,13 @@ const Store = (() => {
     if (id === newParentId) return;
     const node = nodes.find(n => n.id === id);
     if (!node) return;
-    // undgå cirkulær reference: kan ikke flytte en node ind under sit eget barn
+    // avoid circular references: can't move a node under its own child
     if (newParentId && isAncestor(id, newParentId)) return;
     node.parentId = newParentId || null;
     notify();
   }
 
-  // opdaterer kun mindmap-position, rører ikke ved hierarkiet
+  // updates only the mindmap position, doesn't touch the hierarchy
   function moveNodePosition(id, x, y) {
     const node = nodes.find(n => n.id === id);
     if (!node) return;
@@ -149,7 +167,44 @@ const Store = (() => {
     notify();
   }
 
-  // --- eksport / import ---
+  // --- notes sanitizing ---
+  // Keeps only a small safe allowlist of tags/attributes, so pasted or
+  // imported HTML can't smuggle in scripts or other unwanted markup, and
+  // forces every link to open in a new tab with a safe URL scheme.
+  function sanitizeNotes(html) {
+    const container = document.createElement('div');
+    container.innerHTML = html || '';
+    cleanNode(container);
+    return container.innerHTML;
+  }
+
+  function cleanNode(node) {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        cleanNode(child);
+        if (!ALLOWED_NOTE_TAGS.has(child.tagName)) {
+          // unwrap instead of dropping, so the user doesn't lose their text
+          while (child.firstChild) child.parentNode.insertBefore(child.firstChild, child);
+          child.remove();
+          return;
+        }
+        [...child.attributes].forEach(attr => {
+          if (child.tagName === 'A' && (attr.name === 'href' || attr.name === 'target' || attr.name === 'rel')) return;
+          child.removeAttribute(attr.name);
+        });
+        if (child.tagName === 'A') {
+          const href = child.getAttribute('href') || '';
+          if (!ALLOWED_URL_SCHEME.test(href)) child.removeAttribute('href');
+          child.setAttribute('target', '_blank');
+          child.setAttribute('rel', 'noopener noreferrer');
+        }
+      } else if (child.nodeType !== Node.TEXT_NODE) {
+        child.remove();
+      }
+    });
+  }
+
+  // --- export / import ---
 
   function exportJSON() {
     return JSON.stringify(nodes, null, 2);
@@ -157,8 +212,10 @@ const Store = (() => {
 
   function importJSON(jsonString) {
     const parsed = JSON.parse(jsonString);
-    if (!Array.isArray(parsed)) throw new Error('Ugyldigt format: forventede en liste af noder.');
-    nodes = parsed;
+    if (!Array.isArray(parsed)) throw new Error('Invalid format: expected a list of nodes.');
+    // sanitize notes on every incoming node too, in case the JSON came
+    // from an untrusted file or an older export without a notes field
+    nodes = parsed.map(n => ({ ...n, notes: sanitizeNotes(n.notes || '') }));
     notify();
   }
 
@@ -166,7 +223,7 @@ const Store = (() => {
 
   return {
     getAll, getById, getChildren, getRoots,
-    addNode, renameNode, deleteNode, moveNode, moveNodePosition,
-    save, load, subscribe, exportJSON, importJSON
+    addNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
+    save, load, subscribe, exportJSON, importJSON, sanitizeNotes
   };
 })();

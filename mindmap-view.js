@@ -1,14 +1,14 @@
 // mindmap-view.js
-// Mindmap-visning: noder som frit placerbare bokse på et "verdens-lag"
-// (mindmap-world), med SVG-linjer der viser forælder/barn-forbindelser.
+// Mindmap view: nodes as freely placeable boxes on a "world" layer
+// (mindmap-world), with SVG lines showing parent/child connections.
 //
-// - Panorering/zoom sker ved at transformere hele world-laget (translate+scale),
-//   node-positioner (x,y) er altid i "world"-koordinater og upåvirket af zoom.
-// - Under træk opdateres DOM og linjer direkte (uden fuld re-render) for at
-//   undgå flicker; Store opdateres først når man slipper.
-// - Alt input bruger Pointer Events (ikke mouse-events), så det virker
-//   ensartet med mus, pen og touch/tablet. Ét-finger-træk på tomt lærred
-//   panorerer, to-finger-knib zoomer (samt musehjul på desktop).
+// - Panning/zoom work by transforming the whole world layer (translate+scale),
+//   node positions (x,y) are always in "world" coordinates and unaffected by zoom.
+// - While dragging, the DOM and lines are updated directly (no full re-render)
+//   to avoid flicker; the Store is only updated once you release.
+// - All input uses Pointer Events (not mouse events), so it behaves the
+//   same with mouse, pen and touch/tablet. One-finger drag on empty canvas
+//   pans, two-finger pinch zooms (plus the mouse wheel on desktop).
 
 const MindmapView = (() => {
   let canvasEl = null;
@@ -18,7 +18,7 @@ const MindmapView = (() => {
   let panX = 0;
   let panY = 0;
 
-  // --- panorering + pinch-zoom state (canvas-niveau, kan have 1-2 samtidige pointere) ---
+  // --- panning + pinch-zoom state (canvas-level, can have 1-2 concurrent pointers) ---
   const activePointers = new Map(); // pointerId -> {x,y}
   let panPointerId = null;
   let panStart = null;
@@ -31,15 +31,15 @@ const MindmapView = (() => {
     svgEl = container.querySelector('#mindmap-svg');
 
     container.querySelector('#mindmap-new-root-btn').addEventListener('click', () => {
-      // placér den nye node midt i det nuværende synlige udsnit
+      // place the new node roughly in the middle of the current viewport
       const rect = canvasEl.getBoundingClientRect();
       const worldX = Math.max(0, (rect.width / 2 - panX) / zoom - 60);
       const worldY = Math.max(0, (rect.height / 2 - panY) / zoom - 20);
-      const node = Store.addNode('Ny rod-node', null);
+      const node = Store.addNode('New root node', null);
       Store.moveNodePosition(node.id, worldX, worldY);
     });
 
-    // zoom med musehjul (desktop)
+    // zoom with the mouse wheel (desktop)
     canvasEl.addEventListener('wheel', e => {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -60,10 +60,10 @@ const MindmapView = (() => {
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
-  // --- panorering (1 finger/mus) og pinch-zoom (2 fingre) på tomt lærred ---
+  // --- panning (1 finger/mouse) and pinch-zoom (2 fingers) on empty canvas ---
 
   function onCanvasPointerDown(e) {
-    if (e.target !== canvasEl && e.target !== worldEl) return; // kun på tomt lærred, ikke på en node
+    if (e.target !== canvasEl && e.target !== worldEl) return; // only on empty canvas, not on a node
     activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (activePointers.size === 1) {
@@ -106,7 +106,7 @@ const MindmapView = (() => {
       document.removeEventListener('pointercancel', onCanvasPointerUp);
       panPointerId = null;
     } else if (activePointers.size === 1) {
-      // fortsæt panorering med den resterende finger
+      // keep panning with the remaining finger
       const [[id, pt]] = activePointers.entries();
       panPointerId = id;
       panStart = { x: pt.x, y: pt.y, panX, panY };
@@ -132,8 +132,8 @@ const MindmapView = (() => {
       divById[node.id] = div;
     });
 
-    // tegn forbindelseslinjer efter alle bokse er lagt i DOM'en, så
-    // offsetWidth/offsetHeight er korrekte (upåvirket af CSS-transform)
+    // draw connection lines after all boxes are in the DOM, so
+    // offsetWidth/offsetHeight are correct (unaffected by the CSS transform)
     allNodes.forEach(node => {
       if (!node.parentId || !divById[node.parentId]) return;
       const line = drawLine(divById[node.parentId], nodeById[node.parentId], divById[node.id], node);
@@ -157,38 +157,51 @@ const MindmapView = (() => {
 
     const delBtn = document.createElement('button');
     delBtn.className = 'mindmap-node-del';
-    delBtn.title = 'Slet';
+    delBtn.title = 'Delete';
     delBtn.textContent = '✕';
     delBtn.addEventListener('pointerdown', e => e.stopPropagation());
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
-      if (confirm(`Slet "${node.name}" og alle underpunkter?`)) {
+      if (confirm(`Delete "${node.name}" and all its children?`)) {
         Store.deleteNode(node.id);
       }
     });
     div.appendChild(delBtn);
 
-    // opret en ny undernode direkte fra denne node
+    // create a new child node directly from this node
     const addBtn = document.createElement('button');
     addBtn.className = 'mindmap-node-add';
-    addBtn.title = 'Tilføj underpunkt';
+    addBtn.title = 'Add child node';
     addBtn.textContent = '+';
     addBtn.addEventListener('pointerdown', e => e.stopPropagation());
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
-      // Store.addNode kalder notify() synkront, så DOM'en er allerede
-      // gen-tegnet med den nye node når addNode returnerer
-      const child = Store.addNode('Ny node', node.id);
+      // Store.addNode calls notify() synchronously, so the DOM is already
+      // re-rendered with the new node by the time addNode returns
+      const child = Store.addNode('New node', node.id);
       const childDiv = worldEl.querySelector(`.mindmap-node[data-id="${child.id}"]`);
       if (childDiv) startEditingNode(child.id, childDiv);
     });
     div.appendChild(addBtn);
 
-    // højreklik som ekstra genvej til sletning på desktop (mus)
+    // notes button - always visible, even in view mode (it's read-only there)
+    const notesBtn = document.createElement('button');
+    notesBtn.className = 'mindmap-node-notes';
+    if (node.notes) notesBtn.classList.add('has-notes');
+    notesBtn.title = 'Notes';
+    notesBtn.textContent = '📝';
+    notesBtn.addEventListener('pointerdown', e => e.stopPropagation());
+    notesBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      NotesEditor.open(node.id);
+    });
+    div.appendChild(notesBtn);
+
+    // right-click as an extra shortcut for deleting on desktop (mouse)
     div.addEventListener('contextmenu', e => {
       e.preventDefault();
       if (!AppMode.isEditMode()) return;
-      if (confirm(`Slet "${node.name}" og alle underpunkter?`)) {
+      if (confirm(`Delete "${node.name}" and all its children?`)) {
         Store.deleteNode(node.id);
       }
     });
@@ -197,18 +210,18 @@ const MindmapView = (() => {
     return div;
   }
 
-  // træk for at flytte en node; tryk/tap uden bevægelse to gange hurtigt
-  // efter hinanden (dobbeltklik/dobbelttryk) omdøber den. Bruger Pointer
-  // Events fremfor mouse+touch hver for sig, og undgår browserens indbyggede
-  // dblclick-synkronisering (som touch ikke altid udløser pålideligt).
+  // drag to move a node; tapping/clicking without movement twice in quick
+  // succession (double-click/double-tap) renames it. Uses Pointer Events
+  // instead of separate mouse+touch handling, and avoids the browser's
+  // built-in dblclick synthesis (which touch doesn't always trigger reliably).
   function makeDraggable(div, node) {
     let lastTapTime = 0;
-    const MOVE_THRESHOLD = 5; // px, før et tryk regnes som et træk
+    const MOVE_THRESHOLD = 5; // px, before a tap counts as a drag
 
     div.addEventListener('pointerdown', e => {
-      if (!AppMode.isEditMode()) return; // i vis-tilstand kan noder hverken trækkes eller omdøbes
+      if (!AppMode.isEditMode()) return; // nodes can't be dragged or renamed in view mode
       if (e.button !== undefined && e.button > 0) return;
-      e.stopPropagation(); // undgå at trigge panorering af canvas
+      e.stopPropagation(); // avoid triggering canvas panning
 
       const startX = e.clientX;
       const startY = e.clientY;
@@ -261,7 +274,7 @@ const MindmapView = (() => {
             Store.moveNode(node.id, dropTargetId);
           }
         } else {
-          // rent tryk/klik uden bevægelse -> tjek for dobbelttryk (omdøb)
+          // a plain tap/click without movement -> check for a double-tap
           const now = Date.now();
           if (now - lastTapTime < 350) {
             lastTapTime = 0;
@@ -319,8 +332,8 @@ const MindmapView = (() => {
     return line;
   }
 
-  // opdaterer live under træk: linjen til forælderen (som barn) og linjer
-  // til egne børn (som forælder), uden en fuld re-render
+  // live-updates while dragging: the line to the parent (as a child) and
+  // lines to its own children (as a parent), without a full re-render
   function updateLinksForNode(id, x, y, div) {
     const cx = x + div.offsetWidth / 2;
     const cy = y + div.offsetHeight / 2;

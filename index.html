@@ -1,30 +1,30 @@
 <!DOCTYPE html>
-<html lang="da">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RPG Noter</title>
+<title>RPG Notes</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <header class="topbar">
-    <h1 class="app-title">⚔ RPG Noter</h1>
+    <h1 class="app-title">⚔ RPG Notes</h1>
     <nav class="view-tabs">
-      <button id="tab-list-btn" class="tab-btn">Liste</button>
+      <button id="tab-list-btn" class="tab-btn">List</button>
       <button id="tab-mindmap-btn" class="tab-btn">Mindmap</button>
     </nav>
-    <button id="mode-toggle-btn" class="btn" title="Skift mellem redigér- og visningstilstand">👁 Vis-tilstand</button>
+    <button id="mode-toggle-btn" class="btn" title="Switch between edit and view mode">👁 View mode</button>
     <div class="io-actions">
       <div class="drive-status" title="">
         <span id="drive-dot" class="drive-dot"></span>
-        <span id="drive-status-text">Drive: ikke forbundet</span>
+        <span id="drive-status-text">Drive: not connected</span>
       </div>
-      <button id="drive-connect-btn" class="btn">Forbind Drive</button>
-      <button id="drive-sync-btn" class="btn" hidden>Synkronisér nu</button>
-      <button id="drive-disconnect-btn" class="btn" hidden>Afbryd Drive</button>
-      <button id="export-btn" class="btn">Eksportér</button>
-      <button id="import-btn" class="btn">Importér</button>
+      <button id="drive-connect-btn" class="btn">Connect Drive</button>
+      <button id="drive-sync-btn" class="btn" hidden>Sync now</button>
+      <button id="drive-disconnect-btn" class="btn" hidden>Disconnect Drive</button>
+      <button id="export-btn" class="btn">Export</button>
+      <button id="import-btn" class="btn">Import</button>
       <input type="file" id="import-input" accept="application/json" hidden>
     </div>
   </header>
@@ -32,16 +32,16 @@
   <main class="app-main">
     <section id="tree-view" class="view">
       <div class="view-toolbar">
-        <button id="tree-new-root-btn" class="btn btn-primary">+ Ny rod-node</button>
-        <span class="mindmap-hint">Træk i ⠿ for at flytte en node</span>
+        <button id="tree-new-root-btn" class="btn btn-primary">+ New root node</button>
+        <span class="mindmap-hint">Drag ⠿ to move a node · 📝 for notes</span>
       </div>
       <ul id="tree-list" class="tree-list"></ul>
     </section>
 
     <section id="mindmap-view" class="view">
       <div class="mindmap-toolbar">
-        <button id="mindmap-new-root-btn" class="btn btn-primary">+ Ny rod-node</button>
-        <span class="mindmap-hint">Rul eller knib sammen for at zoome · Træk tomt lærred for at panorere · + for underpunkt, ✕ for at slette · Dobbeltklik/dobbelttryk for at omdøbe</span>
+        <button id="mindmap-new-root-btn" class="btn btn-primary">+ New root node</button>
+        <span class="mindmap-hint">Scroll or pinch to zoom · Drag empty canvas to pan · + for child node, ✕ to delete, 📝 for notes · Double-click/double-tap to rename</span>
       </div>
       <div id="mindmap-canvas" class="mindmap-canvas">
         <div id="mindmap-world" class="mindmap-world">
@@ -53,6 +53,7 @@
 
   <script src="store.js"></script>
   <script src="app-mode.js"></script>
+  <script src="notes-editor.js"></script>
   <script src="drive-sync.js"></script>
   <script src="tree-view.js"></script>
   <script src="mindmap-view.js"></script>

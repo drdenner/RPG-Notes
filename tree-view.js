@@ -1,22 +1,23 @@
 // tree-view.js
-// Nestet listevisning ("træliste") af noterne.
-// Tegner <ul>/<li> rekursivt ud fra Store, og håndterer:
-//   - fold ud/ind pr. node (collapsed er kun session-state, ikke gemt)
-//   - inline omdøbning (klik på navn eller på omdøb-knappen)
-//   - tilføj underpunkt / slet (rekursivt via Store.deleteNode)
-//   - flyt node: trækkes via et lille greb (⠿), med Pointer Events så det
-//     virker med både mus, pen og touch (native HTML5 drag-and-drop
-//     understøttes ikke af touch-enheder, så vi bygger det selv)
+// Nested list view of the notes.
+// Renders <ul>/<li> recursively from Store, and handles:
+//   - collapse/expand per node (collapsed state is session-only, not saved)
+//   - inline renaming (click the name or the rename button)
+//   - add child / delete (recursive, via Store.deleteNode)
+//   - notes button (opens the rich-text panel from notes-editor.js)
+//   - move node: dragged via a small grip (⠿), using Pointer Events so it
+//     works with mouse, pen and touch alike (native HTML5 drag-and-drop
+//     isn't supported on touch devices, so we build it ourselves)
 
 const TreeView = (() => {
   let listEl = null;
-  const collapsed = new Set(); // ids der p.t. er foldet sammen
+  const collapsed = new Set(); // ids that are currently collapsed
 
   function init(container) {
     listEl = container.querySelector('#tree-list');
 
     container.querySelector('#tree-new-root-btn').addEventListener('click', () => {
-      const node = Store.addNode('Ny rod-node', null);
+      const node = Store.addNode('New root node', null);
       render();
       startEditing(node.id);
     });
@@ -37,16 +38,16 @@ const TreeView = (() => {
     const row = document.createElement('div');
     row.className = 'tree-row';
 
-    // greb til at trække noden hen på en anden node (flytter den, med børn)
+    // grip to drag the node onto another node (moves it, with its children)
     const grip = document.createElement('button');
     grip.className = 'tree-grip';
-    grip.title = 'Træk for at flytte';
-    grip.setAttribute('aria-label', 'Flyt node');
+    grip.title = 'Drag to move';
+    grip.setAttribute('aria-label', 'Move node');
     grip.textContent = '⠿';
     row.appendChild(grip);
     attachDragHandle(grip, row, node);
 
-    // fold ud/ind
+    // collapse/expand
     const toggle = document.createElement('button');
     toggle.className = 'tree-toggle';
     if (children.length > 0) {
@@ -62,7 +63,7 @@ const TreeView = (() => {
     }
     row.appendChild(toggle);
 
-    // navn - klik/tryk for at redigere inline
+    // name - click/tap to edit inline
     const nameSpan = document.createElement('span');
     nameSpan.className = 'tree-name';
     nameSpan.textContent = node.name;
@@ -72,25 +73,37 @@ const TreeView = (() => {
     });
     row.appendChild(nameSpan);
 
-    // handlingsknapper
+    // notes button - always visible, even in view mode (it's read-only there)
+    const notesBtn = document.createElement('button');
+    notesBtn.className = 'btn-icon tree-notes-btn';
+    if (node.notes) notesBtn.classList.add('has-notes');
+    notesBtn.title = 'Notes';
+    notesBtn.textContent = '📝';
+    notesBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      NotesEditor.open(node.id);
+    });
+    row.appendChild(notesBtn);
+
+    // action buttons
     const actions = document.createElement('span');
     actions.className = 'tree-actions';
 
     const addBtn = document.createElement('button');
     addBtn.className = 'btn-icon';
-    addBtn.title = 'Tilføj underpunkt';
+    addBtn.title = 'Add child node';
     addBtn.textContent = '+';
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
       collapsed.delete(node.id);
-      const child = Store.addNode('Ny node', node.id);
+      const child = Store.addNode('New node', node.id);
       render();
       startEditing(child.id);
     });
 
     const renameBtn = document.createElement('button');
     renameBtn.className = 'btn-icon';
-    renameBtn.title = 'Omdøb';
+    renameBtn.title = 'Rename';
     renameBtn.textContent = '✎';
     renameBtn.addEventListener('click', e => {
       e.stopPropagation();
@@ -99,11 +112,11 @@ const TreeView = (() => {
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-icon btn-danger';
-    delBtn.title = 'Slet';
+    delBtn.title = 'Delete';
     delBtn.textContent = '✕';
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
-      if (confirm(`Slet "${node.name}" og alle underpunkter?`)) {
+      if (confirm(`Delete "${node.name}" and all its children?`)) {
         Store.deleteNode(node.id);
       }
     });
@@ -123,10 +136,10 @@ const TreeView = (() => {
     return li;
   }
 
-  // custom drag-and-drop via Pointer Events (dækker mus, pen og touch samlet)
+  // custom drag-and-drop via Pointer Events (covers mouse, pen and touch)
   function attachDragHandle(handle, row, node) {
     handle.addEventListener('pointerdown', e => {
-      if (e.button !== undefined && e.button > 0) return; // kun venstre-klik/primær touch
+      if (e.button !== undefined && e.button > 0) return; // left click / primary touch only
       e.preventDefault();
       row.classList.add('dragging');
       let currentTargetRow = null;
@@ -157,7 +170,7 @@ const TreeView = (() => {
             Store.moveNode(node.id, targetLi.dataset.id);
           }
         } else if (ev.type === 'pointerup') {
-          // slippet over tom plads i listen -> flyt til rod-niveau
+          // dropped on empty space in the list -> move to root level
           const elUnder = document.elementFromPoint(ev.clientX, ev.clientY);
           if (elUnder && (elUnder === listEl || listEl.contains(elUnder)) && !elUnder.closest('.tree-row')) {
             Store.moveNode(node.id, null);

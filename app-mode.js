@@ -1,13 +1,13 @@
 // app-mode.js
-// Delt tilstand for om appen er i "redigér"- eller "vis"-tilstand.
-// I vis-tilstand er alt destruktivt/redigerbart slået fra (tilføj, omdøb,
-// slet, flyt/træk), så man trygt kan bladre i noterne uden at ændre noget
-// ved et uheld - fx mens man kører en session. Fold ud/ind, zoom og
-// panorering er ikke destruktivt og virker i begge tilstande.
+// Shared state for whether the app is in "edit" or "view" mode. In view
+// mode everything destructive/editable is turned off (add, rename, delete,
+// move/drag), so you can safely browse the notes without changing
+// anything by accident - e.g. while running a session. Expand/collapse,
+// zoom and panning aren't destructive and work in both modes.
 
 const AppMode = (() => {
   const STORAGE_KEY = 'rpg-notes-edit-mode';
-  let editMode = localStorage.getItem(STORAGE_KEY) !== 'false'; // redigér er default
+  let editMode = localStorage.getItem(STORAGE_KEY) !== 'false'; // edit is the default
   const listeners = [];
 
   function isEditMode() {

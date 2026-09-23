@@ -1,7 +1,8 @@
 // app.js
-// Limer views sammen med Store: initialiserer begge visninger, sørger for
-// at de altid gen-tegnes samlet når data ændres (uanset hvilken der er synlig),
-// styrer tab-skift, samt eksport/import af JSON.
+// Glues the views together with the Store: initializes both views, makes
+// sure they're always re-rendered together whenever data changes
+// (regardless of which one is visible), drives tab switching, edit/view
+// mode, and JSON export/import.
 
 document.addEventListener('DOMContentLoaded', () => {
   const treeContainer = document.getElementById('tree-view');
@@ -19,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   Store.subscribe(renderAll);
   renderAll();
 
-  // --- tab-skift mellem Liste og Mindmap (samme underliggende data) ---
+  // --- switch between List and Mindmap tabs (same underlying data) ---
   function showView(name) {
     const isList = name === 'list';
     treeContainer.classList.toggle('active', isList);
@@ -31,18 +32,18 @@ document.addEventListener('DOMContentLoaded', () => {
   tabMindmapBtn.addEventListener('click', () => showView('mindmap'));
   showView('list');
 
-  // --- redigér/vis-tilstand ---
+  // --- edit/view mode ---
   const modeToggleBtn = document.getElementById('mode-toggle-btn');
   function updateModeUI(editMode) {
     document.body.classList.toggle('view-mode', !editMode);
-    modeToggleBtn.textContent = editMode ? '👁 Vis-tilstand' : '✎ Redigér-tilstand';
+    modeToggleBtn.textContent = editMode ? '👁 View mode' : '✎ Edit mode';
     modeToggleBtn.classList.toggle('btn-primary', !editMode);
   }
   modeToggleBtn.addEventListener('click', () => AppMode.toggle());
   AppMode.subscribe(updateModeUI);
   updateModeUI(AppMode.isEditMode());
 
-  // --- eksport til JSON-fil ---
+  // --- export to a JSON file ---
   document.getElementById('export-btn').addEventListener('click', () => {
     const json = Store.exportJSON();
     const blob = new Blob([json], { type: 'application/json' });
@@ -54,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     URL.revokeObjectURL(url);
   });
 
-  // --- import fra JSON-fil ---
+  // --- import from a JSON file ---
   const importInput = document.getElementById('import-input');
   document.getElementById('import-btn').addEventListener('click', () => importInput.click());
   importInput.addEventListener('change', () => {
@@ -65,14 +66,14 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         Store.importJSON(reader.result);
       } catch (e) {
-        alert('Kunne ikke importere filen: ' + e.message);
+        alert('Could not import the file: ' + e.message);
       }
       importInput.value = '';
     };
     reader.readAsText(file);
   });
 
-  // --- Google Drive-synkronisering (valgfri, se opsætning i drive-sync.js) ---
+  // --- Google Drive sync (optional, see setup guide in drive-sync.js) ---
   const driveDot = document.getElementById('drive-dot');
   const driveStatusText = document.getElementById('drive-status-text');
   const driveConnectBtn = document.getElementById('drive-connect-btn');
@@ -80,12 +81,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const driveDisconnectBtn = document.getElementById('drive-disconnect-btn');
 
   const DRIVE_LABELS = {
-    unconfigured: 'Drive: ikke sat op',
-    disconnected: 'Drive: ikke forbundet',
-    connecting: 'Drive: forbinder…',
-    connected: 'Drive: forbundet',
-    syncing: 'Drive: gemmer…',
-    error: 'Drive: fejl'
+    unconfigured: 'Drive: not set up',
+    disconnected: 'Drive: not connected',
+    connecting: 'Drive: connecting…',
+    connected: 'Drive: connected',
+    syncing: 'Drive: saving…',
+    error: 'Drive: error'
   };
 
   function updateDriveUI(status, detail) {
@@ -101,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   driveConnectBtn.addEventListener('click', () => {
     if (!DriveSync.isConfigured()) {
-      alert('Google Drive-synkronisering er ikke sat op endnu.\n\nÅbn drive-sync.js og følg opsætnings-guiden øverst i filen for at få et Google Client ID.');
+      alert('Google Drive sync isn\'t set up yet.\n\nOpen drive-sync.js and follow the setup guide at the top of the file to get a Google Client ID.');
       return;
     }
     DriveSync.connect();

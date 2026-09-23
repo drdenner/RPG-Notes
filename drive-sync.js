@@ -1,32 +1,33 @@
 // drive-sync.js
-// Valgfri synkronisering af noterne via én JSON-fil i brugerens eget Google
-// Drive, så man kan arbejde i de samme data på flere enheder (fx pc og
-// tablet). Bruger scope 'drive.file', så appen KUN kan se/ændre filer den
-// selv har oprettet - ikke resten af din Drive.
+// Optional sync of the notes via a single JSON file in the user's own
+// Google Drive, so you can work on the same data across multiple devices
+// (e.g. pc and tablet). Uses the 'drive.file' scope, so the app can only
+// see/change files it created itself - not the rest of your Drive.
 //
-// FØRSTEGANGSOPSÆTNING (gøres én gang, af dig):
-//   1. Gå til https://console.cloud.google.com/ og opret et projekt
-//   2. Under "APIs & Services" -> aktivér "Google Drive API"
-//   3. Under "OAuth consent screen": vælg "External", udfyld app-navn, og
-//      tilføj din egen Google-konto som "Test user" (så skal appen ikke
-//      igennem Googles fulde verificering for at du selv kan bruge den)
+// ONE-TIME SETUP (done once, by you):
+//   1. Go to https://console.cloud.google.com/ and create a project
+//   2. Under "APIs & Services" -> enable "Google Drive API"
+//   3. Under "OAuth consent screen": choose "External", fill in the app
+//      name, and add your own Google account as a "Test user" (so the app
+//      doesn't need to go through Google's full verification for you to
+//      use it yourself)
 //   4. Under "Credentials" -> "Create credentials" -> "OAuth client ID"
-//      -> vælg "Web application"
-//   5. Under "Authorized JavaScript origins": tilføj den/de URL'er appen
-//      køres fra. Google OAuth virker IKKE med file:// eller en lokal
-//      IP-adresse over http - kun https://... eller http://localhost.
-//      Nemmeste løsning: host mappen et sted med https (fx GitHub Pages)
-//      og åbn den SAMME URL på både pc og tablet.
-//   6. Kopiér det genererede "Client ID" ind i CLIENT_ID herunder.
+//      -> pick "Web application"
+//   5. Under "Authorized JavaScript origins": add the URL(s) the app is
+//      served from. Google OAuth does NOT work with file:// or a plain
+//      local IP over http - only https://... or http://localhost.
+//      Easiest solution: host the folder somewhere with https (e.g.
+//      GitHub Pages) and open that SAME URL on both pc and tablet.
+//   6. Copy the generated "Client ID" into CLIENT_ID below.
 //
-// Uden et gyldigt Client ID virker resten af appen præcis som før - Drive
-// er 100% valgfrit, og alt gemmes stadig lokalt i localStorage.
+// Without a valid Client ID, the rest of the app works exactly as before -
+// Drive is 100% optional, everything still saves locally in localStorage.
 
 const DriveSync = (() => {
   const CLIENT_ID = '162521818251-4h6jcsqivhk66v0160l3u54sck8g16iq.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const FILE_NAME = 'rpg-notes.json';
-  const FOLDER_NAME = 'RPG Noter'; // mappen på Drive filen skal ligge i - ret her hvis du vil have et andet navn
+  const FOLDER_NAME = 'RPG Notes'; // the Drive folder the file lives in - change here for a different name
   const FILE_ID_KEY = 'rpg-notes-drive-file-id';
   const FOLDER_ID_KEY = 'rpg-notes-drive-folder-id';
   const UPLOAD_DEBOUNCE_MS = 1500;
@@ -41,7 +42,7 @@ const DriveSync = (() => {
   let statusCallback = () => {};
 
   function isConfigured() {
-    return !!CLIENT_ID && !CLIENT_ID.startsWith('DIT-');
+    return !!CLIENT_ID && !CLIENT_ID.startsWith('YOUR-');
   }
 
   function setStatus(status, detail) {
@@ -62,7 +63,7 @@ const DriveSync = (() => {
         callback: onTokenResponse
       });
       setStatus('disconnected');
-      // har vi brugt Drive før på denne enhed, så prøv en stille genforbindelse
+      // used Drive before on this device? try a silent reconnect
       if (fileId) {
         tokenClient.requestAccessToken({ prompt: '' });
       }
@@ -71,7 +72,7 @@ const DriveSync = (() => {
 
   function waitForGis(cb, attempts = 0) {
     if (window.google && google.accounts && google.accounts.oauth2) { cb(); return; }
-    if (attempts > 50) { setStatus('error', 'Kunne ikke indlæse Googles loginbibliotek'); return; }
+    if (attempts > 50) { setStatus('error', 'Could not load Google\'s sign-in library'); return; }
     setTimeout(() => waitForGis(cb, attempts + 1), 100);
   }
 
@@ -101,8 +102,8 @@ const DriveSync = (() => {
       await pull();
       setStatus('connected');
     } catch (err) {
-      // filen findes ikke længere, fx fordi der er skiftet Google-konto ->
-      // glem den gemte fil-reference og prøv at finde/oprette en frisk
+      // the file no longer exists, e.g. because a different Google account
+      // was used -> forget the saved file reference and try a fresh one
       if (String(err.message).includes('404') && fileId) {
         fileId = null;
         localStorage.removeItem(FILE_ID_KEY);
@@ -112,12 +113,12 @@ const DriveSync = (() => {
           setStatus('connected');
           return;
         } catch (err2) {
-          console.error('Drive-synkronisering fejlede', err2);
+          console.error('Drive sync failed', err2);
           setStatus('error', err2.message);
           return;
         }
       }
-      console.error('Drive-synkronisering fejlede', err);
+      console.error('Drive sync failed', err);
       setStatus('error', err.message);
     }
   }
@@ -142,8 +143,9 @@ const DriveSync = (() => {
     const folder = await ensureFolder();
 
     if (fileId) {
-      // allerede kendt fil - sørg for at den rent faktisk ligger i mappen
-      // (flytter fx en gammel fil, der blev oprettet i roden før mappen fandtes)
+      // already know the file - make sure it actually lives in the folder
+      // (e.g. moves an older file that was created in the root before the
+      // folder existed)
       await moveFileToFolder(fileId, folder);
       return;
     }
@@ -152,9 +154,9 @@ const DriveSync = (() => {
     if (foundInFolder) {
       fileId = foundInFolder;
     } else {
-      // faldback: en fil oprettet før mappe-understøttelsen fandtes kan
-      // stadig ligge et andet sted på Drive - genbrug den i stedet for at
-      // oprette en ny (og dermed få to kopier af noterne)
+      // fallback: a file created before folder support existed might still
+      // be sitting somewhere else on Drive - reuse it instead of creating a
+      // new one (and ending up with two copies of the notes)
       const foundAnywhere = await findFile(null);
       if (foundAnywhere) {
         fileId = foundAnywhere;
@@ -199,7 +201,7 @@ const DriveSync = (() => {
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=parents`);
     const data = await res.json();
     const currentParents = data.parents || [];
-    if (currentParents.includes(targetFolderId)) return; // ligger allerede i mappen
+    if (currentParents.includes(targetFolderId)) return; // already in the folder
     const params = new URLSearchParams({ addParents: targetFolderId, fields: 'id,parents' });
     if (currentParents.length > 0) params.set('removeParents', currentParents.join(','));
     await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?${params.toString()}`, { method: 'PATCH' });
@@ -232,7 +234,7 @@ const DriveSync = (() => {
     }
   }
 
-  // uploader automatisk til Drive et lille stykke tid efter sidste ændring
+  // automatically uploads to Drive a short while after the last change
   function scheduleUpload() {
     if (suppressUpload || !accessToken || !fileId) return;
     clearTimeout(uploadTimer);
@@ -250,7 +252,7 @@ const DriveSync = (() => {
       });
       setStatus('connected');
     } catch (err) {
-      console.error('Kunne ikke gemme til Drive', err);
+      console.error('Could not save to Drive', err);
       setStatus('error', err.message);
     }
   }
@@ -267,11 +269,11 @@ const DriveSync = (() => {
       await refreshToken();
       return driveFetch(url, options, true);
     }
-    if (!res.ok) throw new Error(`Drive API-fejl (${res.status})`);
+    if (!res.ok) throw new Error(`Drive API error (${res.status})`);
     return res;
   }
 
-  // enhver ændring i noterne (opret/omdøb/slet/flyt) skal ende i Drive
+  // any change to the notes (create/rename/delete/move) should end up in Drive
   Store.subscribe(scheduleUpload);
 
   return { init, connect, disconnect, syncNow, isConfigured };
