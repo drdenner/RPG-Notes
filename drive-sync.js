@@ -22,19 +22,26 @@
 //
 // Without a valid Client ID, the rest of the app works exactly as before -
 // Drive is 100% optional, everything still saves locally in localStorage.
+//
+// There are two separate files in the Drive folder: FILE_NAME is kept in
+// sync automatically on every change, while BACKUP_FILE_NAME is a manual
+// snapshot that only ever changes when the Backup button calls backupNow().
 
 const DriveSync = (() => {
   const CLIENT_ID = '162521818251-4h6jcsqivhk66v0160l3u54sck8g16iq.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const FILE_NAME = 'rpg-notes.json';
+  const BACKUP_FILE_NAME = 'rpg-notes-backup.json'; // only ever written by the Backup button, never by auto-sync
   const FOLDER_NAME = 'RPG Notes'; // the Drive folder the file lives in - change here for a different name
   const FILE_ID_KEY = 'rpg-notes-drive-file-id';
+  const BACKUP_FILE_ID_KEY = 'rpg-notes-drive-backup-file-id';
   const FOLDER_ID_KEY = 'rpg-notes-drive-folder-id';
   const UPLOAD_DEBOUNCE_MS = 1500;
 
   let tokenClient = null;
   let accessToken = null;
   let fileId = localStorage.getItem(FILE_ID_KEY) || null;
+  let backupFileId = localStorage.getItem(BACKUP_FILE_ID_KEY) || null;
   let folderId = localStorage.getItem(FOLDER_ID_KEY) || null;
   let uploadTimer = null;
   let refreshPromise = null;
@@ -150,22 +157,33 @@ const DriveSync = (() => {
       return;
     }
 
-    const foundInFolder = await findFile(folder);
+    const foundInFolder = await findFileByName(FILE_NAME, folder);
     if (foundInFolder) {
       fileId = foundInFolder;
     } else {
       // fallback: a file created before folder support existed might still
       // be sitting somewhere else on Drive - reuse it instead of creating a
       // new one (and ending up with two copies of the notes)
-      const foundAnywhere = await findFile(null);
+      const foundAnywhere = await findFileByName(FILE_NAME, null);
       if (foundAnywhere) {
         fileId = foundAnywhere;
         await moveFileToFolder(fileId, folder);
       } else {
-        fileId = await createFile(folder);
+        fileId = await createFileByName(FILE_NAME, folder);
       }
     }
     localStorage.setItem(FILE_ID_KEY, fileId);
+  }
+
+  // the backup file is separate from the main synced file and only ever
+  // written by the Backup button (see backupNow) - never by auto-sync
+  async function ensureBackupFile() {
+    if (backupFileId) return backupFileId;
+    const folder = await ensureFolder();
+    const found = await findFileByName(BACKUP_FILE_NAME, folder);
+    backupFileId = found || await createFileByName(BACKUP_FILE_NAME, folder);
+    localStorage.setItem(BACKUP_FILE_ID_KEY, backupFileId);
+    return backupFileId;
   }
 
   async function ensureFolder() {
@@ -188,8 +206,8 @@ const DriveSync = (() => {
     return folderId;
   }
 
-  async function findFile(inFolderId) {
-    let query = `name='${FILE_NAME}' and trashed=false`;
+  async function findFileByName(name, inFolderId) {
+    let query = `name='${name}' and trashed=false`;
     if (inFolderId) query += ` and '${inFolderId}' in parents`;
     const q = encodeURIComponent(query);
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
@@ -207,8 +225,8 @@ const DriveSync = (() => {
     await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?${params.toString()}`, { method: 'PATCH' });
   }
 
-  async function createFile(inFolderId) {
-    const metadata = { name: FILE_NAME, mimeType: 'application/json', parents: [inFolderId] };
+  async function createFileByName(name, inFolderId) {
+    const metadata = { name, mimeType: 'application/json', parents: [inFolderId] };
     const boundary = 'rpgnotes-boundary';
     const body =
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
@@ -272,6 +290,20 @@ const DriveSync = (() => {
     push();
   }
 
+  // writes the current notes to the separate backup file. Unlike the main
+  // synced file, this one is NEVER touched by auto-sync (scheduleUpload) -
+  // it only ever changes when this is called, i.e. when the Backup button
+  // is pressed.
+  async function backupNow() {
+    if (!accessToken) { connect(); throw new Error('Not connected to Drive yet - try again once connected.'); }
+    const id = await ensureBackupFile();
+    await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: Store.exportJSON()
+    });
+  }
+
   async function driveFetch(url, options = {}, retried = false) {
     options.headers = Object.assign({ Authorization: `Bearer ${accessToken}` }, options.headers);
     const res = await fetch(url, options);
@@ -286,5 +318,5 @@ const DriveSync = (() => {
   // any change to the notes (create/rename/delete/move) should end up in Drive
   Store.subscribe(scheduleUpload);
 
-  return { init, connect, disconnect, syncNow, isConfigured };
+  return { init, connect, disconnect, syncNow, backupNow, isConfigured };
 })();

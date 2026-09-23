@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const driveStatusText = document.getElementById('drive-status-text');
   const driveConnectBtn = document.getElementById('drive-connect-btn');
   const driveSyncBtn = document.getElementById('drive-sync-btn');
+  const driveBackupBtn = document.getElementById('drive-backup-btn');
   const driveDisconnectBtn = document.getElementById('drive-disconnect-btn');
 
   const DRIVE_LABELS = {
@@ -97,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const isConnectedish = status === 'connected' || status === 'syncing';
     driveConnectBtn.hidden = isConnectedish || status === 'connecting';
     driveSyncBtn.hidden = !isConnectedish;
+    driveBackupBtn.hidden = !isConnectedish;
     driveDisconnectBtn.hidden = !isConnectedish;
   }
 
@@ -109,6 +111,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   driveSyncBtn.addEventListener('click', () => DriveSync.syncNow());
   driveDisconnectBtn.addEventListener('click', () => DriveSync.disconnect());
+
+  driveBackupBtn.addEventListener('click', async () => {
+    const original = driveBackupBtn.textContent;
+    driveBackupBtn.disabled = true;
+    try {
+      await DriveSync.backupNow();
+      driveBackupBtn.textContent = 'Backed up ✓';
+    } catch (err) {
+      console.error('Backup failed', err);
+      driveBackupBtn.textContent = 'Backup failed';
+    }
+    setTimeout(() => {
+      driveBackupBtn.textContent = original;
+      driveBackupBtn.disabled = false;
+    }, 1500);
+  });
 
   DriveSync.init(updateDriveUI);
 });
