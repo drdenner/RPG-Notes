@@ -586,45 +586,64 @@ body.view-mode .mindmap-node {
   white-space: nowrap;
 }
 
-.notes-toolbar {
-  display: flex;
-  gap: 6px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border-soft);
+.notes-hint {
+  padding: 0 16px;
+  margin-top: 10px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
 }
 
-.notes-tool-btn {
+.notes-textarea {
+  margin: 10px 16px 0;
   background: var(--bg-elevated);
   color: var(--text-main);
   border: 1px solid var(--border-soft);
-  width: 32px;
-  height: 32px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  touch-action: manipulation;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 110px;
 }
 
-.notes-tool-btn:hover {
-  background: var(--bg-elevated-hover);
+.notes-textarea:focus {
+  outline: none;
   border-color: var(--accent-gold);
 }
 
-.notes-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  outline: none;
-  line-height: 1.5;
-  font-size: 0.95rem;
+.notes-preview-label {
+  margin: 14px 16px 0;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.notes-content a {
+.notes-preview {
+  flex: 1;
+  overflow-y: auto;
+  margin: 6px 16px 16px;
+  line-height: 1.5;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.notes-preview.notes-preview-full {
+  margin: 16px;
+}
+
+.notes-preview a {
   color: var(--accent-gold-bright);
   text-decoration: underline;
 }
 
-.notes-content b,
-.notes-content strong {
+.notes-preview b {
   color: var(--accent-gold-bright);
+}
+
+.notes-preview:empty::before {
+  content: 'No notes yet.';
+  color: var(--text-dim);
+  font-style: italic;
 }

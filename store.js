@@ -5,8 +5,8 @@
 //   - parentId === null means the node is a root node
 //   - children are NEVER stored on the node itself, they're always derived
 //     by filtering the whole list on parentId (see getChildren)
-//   - notes is a small sanitized HTML string (bold text + links), edited
-//     via notes-editor.js
+//   - notes is plain text with a tiny markdown-like syntax (**bold**, and
+//     URLs are auto-linked) - see notes-editor.js for how it's rendered
 //   - x/y are only used by the mindmap view
 //
 // Want to extend the data model later (e.g. tags, color, node type)? Add
@@ -14,8 +14,6 @@
 
 const Store = (() => {
   const STORAGE_KEY = 'rpg-notes';
-  const ALLOWED_NOTE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'A', 'BR', 'DIV', 'P', 'SPAN', 'UL', 'OL', 'LI']);
-  const ALLOWED_URL_SCHEME = /^(https?:|mailto:)/i;
 
   let nodes = [];
   const listeners = [];
@@ -56,7 +54,7 @@ const Store = (() => {
     const root = {
       id: generateId(),
       name: 'My Campaign',
-      notes: '<b>Welcome!</b> Click the notes button on any node to write rich text here - including <a href="https://example.com" target="_blank" rel="noopener noreferrer">links</a> that always open in a new tab.',
+      notes: 'Welcome! Click the notes button on any node to write **bold text** here - just paste a link like https://example.com and it opens in a new tab automatically.',
       parentId: null, x: 420, y: 80
     };
     const chapter = { id: generateId(), name: 'Chapter 1: The Arrival', notes: '', parentId: root.id, x: 260, y: 240 };
@@ -124,10 +122,10 @@ const Store = (() => {
     notify();
   }
 
-  function updateNodeNotes(id, html) {
+  function updateNodeNotes(id, text) {
     const node = nodes.find(n => n.id === id);
     if (!node) return;
-    node.notes = sanitizeNotes(html);
+    node.notes = typeof text === 'string' ? text : '';
     notify();
   }
 
@@ -167,43 +165,6 @@ const Store = (() => {
     notify();
   }
 
-  // --- notes sanitizing ---
-  // Keeps only a small safe allowlist of tags/attributes, so pasted or
-  // imported HTML can't smuggle in scripts or other unwanted markup, and
-  // forces every link to open in a new tab with a safe URL scheme.
-  function sanitizeNotes(html) {
-    const container = document.createElement('div');
-    container.innerHTML = html || '';
-    cleanNode(container);
-    return container.innerHTML;
-  }
-
-  function cleanNode(node) {
-    [...node.childNodes].forEach(child => {
-      if (child.nodeType === Node.ELEMENT_NODE) {
-        cleanNode(child);
-        if (!ALLOWED_NOTE_TAGS.has(child.tagName)) {
-          // unwrap instead of dropping, so the user doesn't lose their text
-          while (child.firstChild) child.parentNode.insertBefore(child.firstChild, child);
-          child.remove();
-          return;
-        }
-        [...child.attributes].forEach(attr => {
-          if (child.tagName === 'A' && (attr.name === 'href' || attr.name === 'target' || attr.name === 'rel')) return;
-          child.removeAttribute(attr.name);
-        });
-        if (child.tagName === 'A') {
-          const href = child.getAttribute('href') || '';
-          if (!ALLOWED_URL_SCHEME.test(href)) child.removeAttribute('href');
-          child.setAttribute('target', '_blank');
-          child.setAttribute('rel', 'noopener noreferrer');
-        }
-      } else if (child.nodeType !== Node.TEXT_NODE) {
-        child.remove();
-      }
-    });
-  }
-
   // --- export / import ---
 
   function exportJSON() {
@@ -213,9 +174,9 @@ const Store = (() => {
   function importJSON(jsonString) {
     const parsed = JSON.parse(jsonString);
     if (!Array.isArray(parsed)) throw new Error('Invalid format: expected a list of nodes.');
-    // sanitize notes on every incoming node too, in case the JSON came
-    // from an untrusted file or an older export without a notes field
-    nodes = parsed.map(n => ({ ...n, notes: sanitizeNotes(n.notes || '') }));
+    // notes is always plain text - coerce anything unexpected (e.g. an
+    // older export without the field) to a safe empty string
+    nodes = parsed.map(n => ({ ...n, notes: typeof n.notes === 'string' ? n.notes : '' }));
     notify();
   }
 
@@ -224,6 +185,6 @@ const Store = (() => {
   return {
     getAll, getById, getChildren, getRoots,
     addNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
-    save, load, subscribe, exportJSON, importJSON, sanitizeNotes
+    save, load, subscribe, exportJSON, importJSON
   };
 })();

@@ -1,17 +1,21 @@
 // notes-editor.js
-// Rich-text notes panel for a single node. Supports bold text and links
-// (which always open in a new tab), built with a plain contentEditable
-// area + document.execCommand - no external library needed. Shared by
-// both views: tree-view.js and mindmap-view.js each add a "notes" button
-// that calls NotesEditor.open(nodeId).
+// Plain-text notes panel for a single node, with a tiny markdown-like
+// syntax: **bold text** renders as bold, and any http(s)/www URL typed in
+// the text is automatically turned into a link that opens in a new tab.
+// No toolbar or rich-text editing - you just type. Shared by both views:
+// tree-view.js and mindmap-view.js each add a notes button that calls
+// NotesEditor.open(nodeId).
 //
-// The panel stays readable-but-not-editable in view mode (see app-mode.js)
-// so notes can always be read, just not changed accidentally.
+// Safety note: the raw text is stored as-is (see Store.updateNodeNotes).
+// Turning it into HTML always escapes the text FIRST and only then
+// re-introduces the two safe patterns below (**bold** and auto-links), so
+// there's no way for typed or imported text to inject arbitrary markup.
 
 const NotesEditor = (() => {
   const SAVE_DEBOUNCE_MS = 600;
+  const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
 
-  let overlayEl, panelEl, titleEl, toolbarEl, contentEl, boldBtn, linkBtn, closeBtn;
+  let overlayEl, panelEl, titleEl, hintEl, textareaEl, previewLabelEl, previewEl, closeBtn;
   let currentId = null;
   let saveTimer = null;
   let built = false;
@@ -41,45 +45,25 @@ const NotesEditor = (() => {
     closeBtn.addEventListener('click', close);
     header.append(titleEl, closeBtn);
 
-    toolbarEl = document.createElement('div');
-    toolbarEl.className = 'notes-toolbar';
+    hintEl = document.createElement('div');
+    hintEl.className = 'notes-hint';
+    hintEl.textContent = 'Tip: **bold text** for bold - links are detected automatically.';
 
-    boldBtn = document.createElement('button');
-    boldBtn.className = 'notes-tool-btn';
-    boldBtn.innerHTML = '<b>B</b>';
-    boldBtn.title = 'Bold';
-    // keep the current text selection alive through the button click
-    boldBtn.addEventListener('mousedown', e => e.preventDefault());
-    boldBtn.addEventListener('click', () => {
-      document.execCommand('bold');
-      contentEl.focus();
+    textareaEl = document.createElement('textarea');
+    textareaEl.className = 'notes-textarea';
+    textareaEl.addEventListener('input', () => {
+      updatePreview();
       scheduleSave();
     });
 
-    linkBtn = document.createElement('button');
-    linkBtn.className = 'notes-tool-btn';
-    linkBtn.textContent = '🔗';
-    linkBtn.title = 'Insert link';
-    linkBtn.addEventListener('mousedown', e => e.preventDefault());
-    linkBtn.addEventListener('click', () => {
-      const url = prompt('Link URL:');
-      if (!url) return;
-      document.execCommand('createLink', false, url);
-      contentEl.querySelectorAll('a').forEach(a => {
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener noreferrer');
-      });
-      contentEl.focus();
-      scheduleSave();
-    });
+    previewLabelEl = document.createElement('div');
+    previewLabelEl.className = 'notes-preview-label';
+    previewLabelEl.textContent = 'Preview';
 
-    toolbarEl.append(boldBtn, linkBtn);
+    previewEl = document.createElement('div');
+    previewEl.className = 'notes-preview';
 
-    contentEl = document.createElement('div');
-    contentEl.className = 'notes-content';
-    contentEl.addEventListener('input', scheduleSave);
-
-    panelEl.append(header, toolbarEl, contentEl);
+    panelEl.append(header, hintEl, textareaEl, previewLabelEl, previewEl);
     overlayEl.appendChild(panelEl);
     document.body.appendChild(overlayEl);
 
@@ -88,8 +72,16 @@ const NotesEditor = (() => {
 
   function applyMode() {
     const editable = AppMode.isEditMode();
-    contentEl.contentEditable = editable ? 'true' : 'false';
-    toolbarEl.style.display = editable ? 'flex' : 'none';
+    textareaEl.hidden = !editable;
+    hintEl.hidden = !editable;
+    previewLabelEl.hidden = !editable;
+    previewEl.classList.toggle('notes-preview-full', !editable);
+    updatePreview();
+  }
+
+  function updatePreview() {
+    const raw = textareaEl.value.trim();
+    previewEl.innerHTML = raw ? renderNotes(textareaEl.value) : '';
   }
 
   function open(nodeId) {
@@ -99,10 +91,10 @@ const NotesEditor = (() => {
     const node = Store.getById(nodeId);
     if (!node) return;
     titleEl.textContent = node.name;
-    contentEl.innerHTML = Store.sanitizeNotes(node.notes || '');
+    textareaEl.value = node.notes || '';
     applyMode();
     overlayEl.hidden = false;
-    if (AppMode.isEditMode()) contentEl.focus();
+    if (AppMode.isEditMode()) textareaEl.focus();
   }
 
   function close() {
@@ -119,7 +111,26 @@ const NotesEditor = (() => {
   function flushSave() {
     clearTimeout(saveTimer);
     if (!currentId || !AppMode.isEditMode()) return;
-    Store.updateNodeNotes(currentId, contentEl.innerHTML);
+    Store.updateNodeNotes(currentId, textareaEl.value);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // turns raw text into safe display HTML: escapes everything first, then
+  // re-introduces only **bold** and auto-detected links
+  function renderNotes(text) {
+    let html = escapeHtml(text || '');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    html = html.replace(URL_PATTERN, url => {
+      const href = url.startsWith('www.') ? 'https://' + url : url;
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    });
+    html = html.replace(/\n/g, '<br>');
+    return html;
   }
 
   return { open };
