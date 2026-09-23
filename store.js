@@ -1,19 +1,56 @@
 // store.js
 // Flat data model for RPG notes, persisted to localStorage.
 //
-// Node shape: { id, name, notes, parentId, x, y }
+// ============================================================================
+// DATA FORMAT (this is the contract - keep it stable, it's what Export,
+// Import and Google Drive sync all read and write; a rewrite of the app
+// should be able to load old data just by honoring this shape)
+// ============================================================================
+//
+// An export file (Store.exportJSON(), also what ends up in the synced
+// rpg-notes.json on Google Drive) looks like:
+//
+//   {
+//     "schemaVersion": 1,
+//     "app": "rpg-notes",
+//     "exportedAt": "2026-01-01T12:00:00.000Z",
+//     "nodes": [ <node>, <node>, ... ]
+//   }
+//
+// Store.importJSON() requires this envelope shape (a "nodes" array) - it
+// does not accept a bare array of nodes.
+//
+// Each <node> is a flat object:
+//   {
+//     "id": "string, unique, required",
+//     "name": "string, required",
+//     "notes": "string, required (plain text, may be empty)",
+//     "parentId": "string (another node's id) or null for a root node",
+//     "x": number,
+//     "y": number
+//   }
 //   - parentId === null means the node is a root node
 //   - children are NEVER stored on the node itself, they're always derived
 //     by filtering the whole list on parentId (see getChildren)
-//   - notes is plain text with a tiny markdown-like syntax (**bold**, and
-//     URLs are auto-linked) - see notes-editor.js for how it's rendered
-//   - x/y are only used by the mindmap view
+//   - notes is plain text with a tiny markdown-like syntax: **bold** renders
+//     bold, and any http(s)/www URL is auto-linked - see notes-editor.js
+//     for the renderer. It is NEVER HTML, so it's safe to store/display as-is.
+//   - x/y are only used by the mindmap view (pixel position on its canvas)
+//
+// importJSON() normalizes/repairs incoming nodes defensively (missing
+// fields get sane defaults, a parentId pointing at a non-existent node
+// becomes a root node) rather than trusting the file blindly, since it may
+// be hand-edited or come from an older/future version of the app. Unknown
+// extra fields on a node are preserved, not stripped, so a future version
+// of this app can add fields without older exports losing them.
 //
 // Want to extend the data model later (e.g. tags, color, node type)? Add
-// the fields here (and in seedDefaultData).
+// the fields here, in seedDefaultData, and in the normalization step inside
+// importJSON.
 
 const Store = (() => {
   const STORAGE_KEY = 'rpg-notes';
+  const SCHEMA_VERSION = 1;
 
   let nodes = [];
   const listeners = [];
@@ -168,15 +205,49 @@ const Store = (() => {
   // --- export / import ---
 
   function exportJSON() {
-    return JSON.stringify(nodes, null, 2);
+    return JSON.stringify({
+      schemaVersion: SCHEMA_VERSION,
+      app: 'rpg-notes',
+      exportedAt: new Date().toISOString(),
+      nodes
+    }, null, 2);
   }
 
   function importJSON(jsonString) {
     const parsed = JSON.parse(jsonString);
-    if (!Array.isArray(parsed)) throw new Error('Invalid format: expected a list of nodes.');
-    // notes is always plain text - coerce anything unexpected (e.g. an
-    // older export without the field) to a safe empty string
-    nodes = parsed.map(n => ({ ...n, notes: typeof n.notes === 'string' ? n.notes : '' }));
+    const incoming = parsed && typeof parsed === 'object' ? parsed.nodes : undefined;
+    if (!Array.isArray(incoming)) {
+      throw new Error('Invalid format: expected an export file with a "nodes" array.');
+    }
+
+    const validIds = new Set(incoming.map(n => n && n.id).filter(Boolean));
+    nodes = incoming.map(n => {
+      if (!n || typeof n.id !== 'string' || !n.id) {
+        throw new Error('Invalid format: every node needs a non-empty string "id".');
+      }
+      return {
+        ...n, // preserve any fields a newer/older version of the app added
+        name: typeof n.name === 'string' && n.name ? n.name : 'Unnamed node',
+        notes: typeof n.notes === 'string' ? n.notes : '',
+        parentId: typeof n.parentId === 'string' && validIds.has(n.parentId) && n.parentId !== n.id ? n.parentId : null,
+        x: typeof n.x === 'number' && isFinite(n.x) ? n.x : 0,
+        y: typeof n.y === 'number' && isFinite(n.y) ? n.y : 0
+      };
+    });
+
+    // break any longer cycles a corrupted/hand-edited file might contain
+    // (A -> B -> A), so traversal can never loop forever
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    nodes.forEach(n => {
+      const seen = new Set();
+      let current = n;
+      while (current.parentId) {
+        if (seen.has(current.parentId)) { n.parentId = null; break; }
+        seen.add(current.parentId);
+        current = byId.get(current.parentId);
+      }
+    });
+
     notify();
   }
 

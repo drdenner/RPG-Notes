@@ -227,11 +227,21 @@ const DriveSync = (() => {
     if (!fileId) return;
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
     const text = await res.text();
-    if (text.trim()) {
-      suppressUpload = true;
+    if (!text.trim()) return;
+
+    suppressUpload = true;
+    try {
       Store.importJSON(text);
+    } catch (err) {
+      // the remote file is in a shape Store can't read (e.g. an older
+      // export format) - keep the local data and overwrite the remote
+      // file with it instead of failing the whole connection
+      console.warn('Could not read the Drive file, overwriting it with local data instead.', err);
       suppressUpload = false;
+      await push();
+      return;
     }
+    suppressUpload = false;
   }
 
   // automatically uploads to Drive a short while after the last change
