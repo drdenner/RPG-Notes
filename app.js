@@ -31,6 +31,17 @@ document.addEventListener('DOMContentLoaded', () => {
   tabMindmapBtn.addEventListener('click', () => showView('mindmap'));
   showView('list');
 
+  // --- redigér/vis-tilstand ---
+  const modeToggleBtn = document.getElementById('mode-toggle-btn');
+  function updateModeUI(editMode) {
+    document.body.classList.toggle('view-mode', !editMode);
+    modeToggleBtn.textContent = editMode ? '👁 Vis-tilstand' : '✎ Redigér-tilstand';
+    modeToggleBtn.classList.toggle('btn-primary', !editMode);
+  }
+  modeToggleBtn.addEventListener('click', () => AppMode.toggle());
+  AppMode.subscribe(updateModeUI);
+  updateModeUI(AppMode.isEditMode());
+
   // --- eksport til JSON-fil ---
   document.getElementById('export-btn').addEventListener('click', () => {
     const json = Store.exportJSON();

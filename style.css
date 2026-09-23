@@ -120,6 +120,28 @@ body {
 .drive-dot-connecting { background: var(--accent-gold); }
 .drive-dot-error { background: var(--accent-red-bright); }
 
+/* --- vis-tilstand: skjul alt destruktivt/redigerbart, behold fold ud/ind,
+   zoom og panorering (som ikke ændrer noget) --- */
+
+body.view-mode .tree-grip,
+body.view-mode .tree-actions,
+body.view-mode #tree-new-root-btn,
+body.view-mode .mindmap-node-del,
+body.view-mode .mindmap-node-add,
+body.view-mode #mindmap-new-root-btn,
+body.view-mode #import-btn,
+body.view-mode .mindmap-hint {
+  display: none !important;
+}
+
+body.view-mode .tree-name {
+  cursor: default;
+}
+
+body.view-mode .mindmap-node {
+  cursor: default;
+}
+
 /* --- generiske knapper --- */
 
 .btn {

@@ -187,6 +187,7 @@ const MindmapView = (() => {
     // højreklik som ekstra genvej til sletning på desktop (mus)
     div.addEventListener('contextmenu', e => {
       e.preventDefault();
+      if (!AppMode.isEditMode()) return;
       if (confirm(`Slet "${node.name}" og alle underpunkter?`)) {
         Store.deleteNode(node.id);
       }
@@ -205,6 +206,7 @@ const MindmapView = (() => {
     const MOVE_THRESHOLD = 5; // px, før et tryk regnes som et træk
 
     div.addEventListener('pointerdown', e => {
+      if (!AppMode.isEditMode()) return; // i vis-tilstand kan noder hverken trækkes eller omdøbes
       if (e.button !== undefined && e.button > 0) return;
       e.stopPropagation(); // undgå at trigge panorering af canvas
 

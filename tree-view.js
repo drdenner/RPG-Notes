@@ -67,7 +67,9 @@ const TreeView = (() => {
     nameSpan.className = 'tree-name';
     nameSpan.textContent = node.name;
     nameSpan.tabIndex = 0;
-    nameSpan.addEventListener('click', () => startEditing(node.id));
+    nameSpan.addEventListener('click', () => {
+      if (AppMode.isEditMode()) startEditing(node.id);
+    });
     row.appendChild(nameSpan);
 
     // handlingsknapper
