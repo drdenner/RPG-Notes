@@ -12,7 +12,7 @@
   a stale cached copy. Hard refresh (Ctrl+Shift+R) still works too, but this
   means regular visits pick up updates without needing one.
 -->
-<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="style.css?v=2">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -46,11 +46,10 @@
 
   <main class="app-main">
     <section id="tree-view" class="view">
-      <div class="view-toolbar">
-        <button id="tree-new-root-btn" class="btn btn-primary">+ New root node</button>
-        <span class="mindmap-hint">Click a name to open it (rename + notes) · Drag ⠿ to move a node</span>
+      <div id="tree-list-wrap" class="tree-list-wrap">
+        <ul id="tree-list" class="tree-list"></ul>
+        <button id="tree-new-root-btn" class="btn btn-primary mindmap-float-btn">+ New root node</button>
       </div>
-      <ul id="tree-list" class="tree-list"></ul>
     </section>
 
     <section id="mindmap-view" class="view">
