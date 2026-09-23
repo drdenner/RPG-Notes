@@ -12,12 +12,11 @@
 // there's no way for typed or imported text to inject arbitrary markup.
 
 const NotesEditor = (() => {
-  const SAVE_DEBOUNCE_MS = 600;
   const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
 
   let overlayEl, panelEl, titleEl, hintEl, textareaEl, previewLabelEl, previewEl, closeBtn;
   let currentId = null;
-  let saveTimer = null;
+  let isDirty = false;
   let built = false;
 
   function build() {
@@ -52,8 +51,8 @@ const NotesEditor = (() => {
     textareaEl = document.createElement('textarea');
     textareaEl.className = 'notes-textarea';
     textareaEl.addEventListener('input', () => {
+      isDirty = true;
       updatePreview();
-      scheduleSave();
     });
 
     previewLabelEl = document.createElement('div');
@@ -86,7 +85,13 @@ const NotesEditor = (() => {
 
   function open(nodeId) {
     build();
-    flushSave(); // commit any pending edit on the previously open node first
+    // switching straight to a different node without closing first: still
+    // offer to save whatever was pending on the previous one
+    try {
+      maybeSaveBeforeLeaving();
+    } finally {
+      isDirty = false;
+    }
     currentId = nodeId;
     const node = Store.getById(nodeId);
     if (!node) return;
@@ -98,20 +103,22 @@ const NotesEditor = (() => {
   }
 
   function close() {
-    flushSave();
-    overlayEl.hidden = true;
-    currentId = null;
+    // the panel must always end up hidden, even if saving throws for some
+    // reason - closing should never get "stuck" behind a failed save
+    try {
+      maybeSaveBeforeLeaving();
+    } finally {
+      overlayEl.hidden = true;
+      currentId = null;
+      isDirty = false;
+    }
   }
 
-  function scheduleSave() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
-  }
-
-  function flushSave() {
-    clearTimeout(saveTimer);
-    if (!currentId || !AppMode.isEditMode()) return;
-    Store.updateNodeNotes(currentId, textareaEl.value);
+  function maybeSaveBeforeLeaving() {
+    if (!isDirty || !currentId || !AppMode.isEditMode()) return;
+    if (confirm('Save changes to this note?')) {
+      Store.updateNodeNotes(currentId, textareaEl.value);
+    }
   }
 
   function escapeHtml(str) {
