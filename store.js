@@ -64,8 +64,9 @@ const Store = (() => {
   let campaigns = [];
   let currentCampaignId = null;
   let nodes = [];
-  const dataListeners = [];     // fired on real data mutations (add/rename/delete/move/notes)
-  const campaignListeners = []; // fired when the active campaign changes (switch/create/delete)
+  const dataListeners = [];        // fired on real data mutations (add/rename/delete/move/notes)
+  const campaignListeners = [];    // fired when the active campaign changes (switch/create/delete)
+  const campaignDeletedListeners = []; // fired with a campaign's id right after it's deleted, so drive-sync.js can clean up its Drive files
 
   function dataKey(campaignId) {
     return 'rpg-notes-data-' + campaignId;
@@ -156,6 +157,10 @@ const Store = (() => {
     campaignListeners.push(fn);
   }
 
+  function subscribeCampaignDeleted(fn) {
+    campaignDeletedListeners.push(fn);
+  }
+
   // --- campaigns ---
 
   function listCampaigns() {
@@ -171,10 +176,22 @@ const Store = (() => {
     return c ? c.name : '';
   }
 
+  // two campaigns sharing a name would also share a Drive filename (see
+  // drive-sync.js) and overwrite each other there - so names must be
+  // unique; a duplicate gets " (2)", " (3)", etc. appended automatically
+  function uniqueCampaignName(desiredName, excludeId) {
+    const base = (desiredName || '').trim() || 'New campaign';
+    const taken = new Set(campaigns.filter(c => c.id !== excludeId).map(c => c.name));
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base} (${n})`)) n++;
+    return `${base} (${n})`;
+  }
+
   // creates a new, EMPTY campaign and switches to it
   function createCampaign(name) {
     const id = generateId();
-    campaigns.push({ id, name: (name || '').trim() || 'New campaign' });
+    campaigns.push({ id, name: uniqueCampaignName(name, null) });
     currentCampaignId = id;
     nodes = [];
     save();
@@ -194,7 +211,8 @@ const Store = (() => {
   function renameCampaign(id, newName) {
     const c = campaigns.find(c => c.id === id);
     if (!c) return;
-    c.name = (newName || '').trim() || c.name;
+    const trimmed = (newName || '').trim();
+    c.name = trimmed ? uniqueCampaignName(trimmed, id) : c.name;
     saveCampaignRegistry();
     notifyCampaignChanged(); // lets the UI refresh the campaign's displayed name
   }
@@ -214,6 +232,7 @@ const Store = (() => {
       nodes = loadCampaignNodes(currentCampaignId);
     }
     saveCampaignRegistry();
+    campaignDeletedListeners.forEach(fn => fn(id)); // lets drive-sync.js trash its Drive files
     notifyCampaignChanged();
     return true;
   }
@@ -370,6 +389,7 @@ const Store = (() => {
     addNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
     save, load, subscribe, exportJSON, importJSON,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName,
-    createCampaign, switchCampaign, renameCampaign, deleteCampaign, subscribeCampaignChange
+    createCampaign, switchCampaign, renameCampaign, deleteCampaign,
+    subscribeCampaignChange, subscribeCampaignDeleted
   };
 })();

@@ -1,8 +1,8 @@
 // app.js
-// Glues the views together with the Store: initializes both views, makes
-// sure they're always re-rendered together whenever data changes
-// (regardless of which one is visible), drives tab switching, edit/view
-// mode, and JSON export/import.
+// Glues the views together with the Store: initializes both views, keeps
+// whichever one is currently visible in sync with data changes (the other
+// just gets caught up when you switch to it, see renderAll/showView),
+// drives tab switching, edit/view mode, and JSON export/import.
 
 document.addEventListener('DOMContentLoaded', () => {
   const treeContainer = document.getElementById('tree-view');
@@ -13,9 +13,22 @@ document.addEventListener('DOMContentLoaded', () => {
   TreeView.init(treeContainer);
   MindmapView.init(mindmapContainer);
 
+  // only the visible view is actually re-rendered when data changes; the
+  // other one is marked dirty and catches up the moment you switch to it
+  // (see showView below) - no point doing render work for a view nobody
+  // is looking at right now
+  let activeView = 'list';
+  let treeDirty = false;
+  let mindmapDirty = false;
+
   function renderAll() {
-    TreeView.render();
-    MindmapView.render();
+    if (activeView === 'list') {
+      TreeView.render();
+      mindmapDirty = true;
+    } else {
+      MindmapView.render();
+      treeDirty = true;
+    }
   }
   Store.subscribe(renderAll);
   Store.subscribeCampaignChange(renderAll);
@@ -69,10 +82,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- switch between List and Mindmap tabs (same underlying data) ---
   function showView(name) {
     const isList = name === 'list';
+    activeView = isList ? 'list' : 'mindmap';
     treeContainer.classList.toggle('active', isList);
     mindmapContainer.classList.toggle('active', !isList);
     tabListBtn.classList.toggle('active', isList);
     tabMindmapBtn.classList.toggle('active', !isList);
+
+    // catch up the view we're switching to if it missed any updates
+    // while it was in the background
+    if (isList && treeDirty) { TreeView.render(); treeDirty = false; }
+    if (!isList && mindmapDirty) { MindmapView.render(); mindmapDirty = false; }
   }
   tabListBtn.addEventListener('click', () => showView('list'));
   tabMindmapBtn.addEventListener('click', () => showView('mindmap'));

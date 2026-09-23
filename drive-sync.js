@@ -433,5 +433,35 @@ const DriveSync = (() => {
     }
   }
 
+  // a deleted campaign's Drive files would otherwise be orphaned forever -
+  // move them to Drive's trash (not a permanent delete, so it's still
+  // recoverable there if this was a mistake) and forget the local
+  // references. Queued so it can't race a connect/switch still in flight.
+  Store.subscribeCampaignDeleted(deletedCampaignId => {
+    queueSync(() => trashCampaignFiles(deletedCampaignId));
+  });
+
+  async function trashCampaignFiles(campaignId) {
+    const fId = localStorage.getItem(fileIdKeyFor(campaignId));
+    const bId = localStorage.getItem(backupFileIdKeyFor(campaignId));
+    localStorage.removeItem(fileIdKeyFor(campaignId));
+    localStorage.removeItem(backupFileIdKeyFor(campaignId));
+    if (!accessToken) return; // not connected - nothing we can do on the Drive side right now
+    try {
+      if (fId) await trashDriveFile(fId);
+      if (bId) await trashDriveFile(bId);
+    } catch (err) {
+      console.error('Could not remove this campaign\'s Drive files', err);
+    }
+  }
+
+  async function trashDriveFile(id) {
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trashed: true })
+    });
+  }
+
   return { init, connect, disconnect, syncNow, backupNow, isConfigured };
 })();
