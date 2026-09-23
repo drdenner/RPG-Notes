@@ -321,24 +321,10 @@ body.view-mode .mindmap-node {
   background: rgba(201, 162, 91, 0.12);
 }
 
-.tree-name-input {
-  flex: 1;
-  background: var(--bg-panel);
-  color: var(--text-main);
-  border: 1px solid var(--accent-gold);
-  border-radius: 4px;
-  padding: 3px 6px;
-  font-size: 0.95rem;
-}
-
-/* notes button stays visible in view mode - not part of .tree-actions */
-.tree-notes-btn {
-  opacity: 0.55;
-}
-
-.tree-notes-btn:hover,
-.tree-notes-btn.has-notes {
-  opacity: 1;
+/* small marker so you can tell at a glance which nodes have notes */
+.tree-name.has-notes {
+  border-left: 2px solid var(--accent-gold);
+  padding-left: 6px;
 }
 
 .tree-actions {
@@ -453,14 +439,9 @@ body.view-mode .mindmap-node {
   font-size: 0.92rem;
 }
 
-.mindmap-node-input {
-  width: 100%;
-  background: var(--bg-panel);
-  color: var(--text-main);
-  border: 1px solid var(--accent-gold);
-  border-radius: 4px;
-  padding: 3px 6px;
-  font-size: 0.92rem;
+/* small marker so you can tell at a glance which nodes have notes */
+.mindmap-node.has-notes {
+  border-left: 3px solid var(--accent-gold);
 }
 
 .mindmap-node-del {
@@ -502,29 +483,6 @@ body.view-mode .mindmap-node {
 
 .mindmap-node-add:hover {
   background: var(--accent-gold-bright);
-}
-
-/* notes button stays visible in view mode - sits at the bottom-right corner */
-.mindmap-node-notes {
-  position: absolute;
-  bottom: -10px;
-  right: -10px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--bg-panel);
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.mindmap-node-notes:hover,
-.mindmap-node-notes.has-notes {
-  color: var(--text-main);
-  border-color: var(--accent-gold);
 }
 
 /* hide +/✕ behind hover ONLY on devices with a precise pointer (mouse) -
@@ -581,14 +539,28 @@ body.view-mode .mindmap-node {
   border-bottom: 1px solid var(--border-soft);
 }
 
-.notes-title {
+.notes-title-input {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.1rem;
   color: var(--accent-gold-bright);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 2px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  min-width: 0;
+  outline: none;
+}
+
+.notes-title-input:not([readonly]):focus {
+  border-bottom-color: var(--accent-gold);
+}
+
+.notes-title-input[readonly] {
+  cursor: default;
 }
 
 .notes-header-actions {

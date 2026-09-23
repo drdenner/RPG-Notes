@@ -1,10 +1,12 @@
 // notes-editor.js
-// Plain-text notes panel for a single node, with a tiny markdown-like
-// syntax: **bold text** renders as bold, and any http(s)/www URL typed in
-// the text is automatically turned into a link that opens in a new tab.
-// No toolbar or rich-text editing - you just type. Shared by both views:
-// tree-view.js and mindmap-view.js each add a notes button that calls
-// NotesEditor.open(nodeId).
+// The single panel for a node: renaming it and writing its notes both
+// happen here. Both views open it by clicking/tapping the node itself -
+// there's no separate rename or notes button anymore.
+//
+// Notes are plain text with a tiny markdown-like syntax: **bold text**
+// renders as bold, and any http(s)/www URL typed in the text is
+// automatically turned into a link that opens in a new tab. No toolbar or
+// rich-text editing needed - you just type.
 //
 // Explicit Save button - nothing is written to the Store until you click
 // it. Close always just hides the panel, with no side effects, so it can
@@ -18,7 +20,7 @@
 const NotesEditor = (() => {
   const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
 
-  let overlayEl, panelEl, titleEl, hintEl, textareaEl, previewLabelEl, previewEl, saveBtn, closeBtn;
+  let overlayEl, panelEl, titleInputEl, hintEl, textareaEl, previewLabelEl, previewEl, saveBtn, closeBtn;
   let currentId = null;
   let built = false;
 
@@ -37,8 +39,10 @@ const NotesEditor = (() => {
 
     const header = document.createElement('div');
     header.className = 'notes-header';
-    titleEl = document.createElement('span');
-    titleEl.className = 'notes-title';
+
+    titleInputEl = document.createElement('input');
+    titleInputEl.type = 'text';
+    titleInputEl.className = 'notes-title-input';
 
     const headerActions = document.createElement('div');
     headerActions.className = 'notes-header-actions';
@@ -55,7 +59,7 @@ const NotesEditor = (() => {
     closeBtn.addEventListener('click', close);
 
     headerActions.append(saveBtn, closeBtn);
-    header.append(titleEl, headerActions);
+    header.append(titleInputEl, headerActions);
 
     hintEl = document.createElement('div');
     hintEl.className = 'notes-hint';
@@ -81,6 +85,7 @@ const NotesEditor = (() => {
 
   function applyMode() {
     const editable = AppMode.isEditMode();
+    titleInputEl.readOnly = !editable;
     textareaEl.hidden = !editable;
     hintEl.hidden = !editable;
     previewLabelEl.hidden = !editable;
@@ -99,15 +104,16 @@ const NotesEditor = (() => {
     currentId = nodeId;
     const node = Store.getById(nodeId);
     if (!node) return;
-    titleEl.textContent = node.name;
+    titleInputEl.value = node.name;
     textareaEl.value = node.notes || '';
     applyMode();
     overlayEl.classList.add('open');
-    if (AppMode.isEditMode()) textareaEl.focus();
+    if (AppMode.isEditMode()) titleInputEl.focus();
   }
 
   function save() {
     if (!currentId) return;
+    Store.renameNode(currentId, titleInputEl.value);
     Store.updateNodeNotes(currentId, textareaEl.value);
     saveBtn.textContent = 'Saved ✓';
     saveBtn.disabled = true;

@@ -2,9 +2,9 @@
 // Nested list view of the notes.
 // Renders <ul>/<li> recursively from Store, and handles:
 //   - collapse/expand per node (collapsed state is session-only, not saved)
-//   - inline renaming (click the name or the rename button)
+//   - clicking a node's name opens it (NotesEditor - rename and notes both
+//     live there, there's no separate rename/notes button)
 //   - add child / delete (recursive, via Store.deleteNode)
-//   - notes button (opens the rich-text panel from notes-editor.js)
 //   - move node: dragged via a small grip (⠿), using Pointer Events so it
 //     works with mouse, pen and touch alike (native HTML5 drag-and-drop
 //     isn't supported on touch devices, so we build it ourselves)
@@ -19,7 +19,7 @@ const TreeView = (() => {
     container.querySelector('#tree-new-root-btn').addEventListener('click', () => {
       const node = Store.addNode('New root node', null);
       render();
-      startEditing(node.id);
+      NotesEditor.open(node.id);
     });
   }
 
@@ -63,27 +63,14 @@ const TreeView = (() => {
     }
     row.appendChild(toggle);
 
-    // name - click/tap to edit inline
+    // name - click/tap opens the node (rename + notes live in that panel)
     const nameSpan = document.createElement('span');
     nameSpan.className = 'tree-name';
+    if (node.notes) nameSpan.classList.add('has-notes');
     nameSpan.textContent = node.name;
     nameSpan.tabIndex = 0;
-    nameSpan.addEventListener('click', () => {
-      if (AppMode.isEditMode()) startEditing(node.id);
-    });
+    nameSpan.addEventListener('click', () => NotesEditor.open(node.id));
     row.appendChild(nameSpan);
-
-    // notes button - always visible, even in view mode (it's read-only there)
-    const notesBtn = document.createElement('button');
-    notesBtn.className = 'btn-icon tree-notes-btn';
-    if (node.notes) notesBtn.classList.add('has-notes');
-    notesBtn.title = 'Notes';
-    notesBtn.textContent = '📝';
-    notesBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      NotesEditor.open(node.id);
-    });
-    row.appendChild(notesBtn);
 
     // action buttons
     const actions = document.createElement('span');
@@ -98,16 +85,7 @@ const TreeView = (() => {
       collapsed.delete(node.id);
       const child = Store.addNode('New node', node.id);
       render();
-      startEditing(child.id);
-    });
-
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'btn-icon';
-    renameBtn.title = 'Rename';
-    renameBtn.textContent = '✎';
-    renameBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      startEditing(node.id);
+      NotesEditor.open(child.id);
     });
 
     const delBtn = document.createElement('button');
@@ -121,7 +99,7 @@ const TreeView = (() => {
       }
     });
 
-    actions.append(addBtn, renameBtn, delBtn);
+    actions.append(addBtn, delBtn);
     row.appendChild(actions);
 
     li.appendChild(row);
@@ -181,30 +159,6 @@ const TreeView = (() => {
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', finish);
       document.addEventListener('pointercancel', finish);
-    });
-  }
-
-  function startEditing(id) {
-    const row = listEl.querySelector(`.tree-node[data-id="${id}"] > .tree-row`);
-    if (!row) return;
-    const nameSpan = row.querySelector('.tree-name');
-    const node = Store.getById(id);
-
-    const input = document.createElement('input');
-    input.className = 'tree-name-input';
-    input.type = 'text';
-    input.value = node.name;
-    nameSpan.replaceWith(input);
-    input.focus();
-    input.select();
-
-    function commit() {
-      Store.renameNode(id, input.value);
-    }
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') input.blur();
-      if (e.key === 'Escape') { input.value = node.name; input.blur(); }
     });
   }
 

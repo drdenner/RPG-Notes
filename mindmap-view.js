@@ -9,6 +9,9 @@
 // - All input uses Pointer Events (not mouse events), so it behaves the
 //   same with mouse, pen and touch/tablet. One-finger drag on empty canvas
 //   pans, two-finger pinch zooms (plus the mouse wheel on desktop).
+// - Tapping a node (no movement) opens it (NotesEditor - rename and notes
+//   both live there); dragging it (movement past a small threshold) moves
+//   it instead, and only works in edit mode.
 
 const MindmapView = (() => {
   let canvasEl = null;
@@ -37,6 +40,7 @@ const MindmapView = (() => {
       const worldY = Math.max(0, (rect.height / 2 - panY) / zoom - 20);
       const node = Store.addNode('New root node', null);
       Store.moveNodePosition(node.id, worldX, worldY);
+      NotesEditor.open(node.id);
     });
 
     // zoom with the mouse wheel (desktop)
@@ -146,6 +150,7 @@ const MindmapView = (() => {
   function buildNodeEl(node) {
     const div = document.createElement('div');
     div.className = 'mindmap-node';
+    if (node.notes) div.classList.add('has-notes');
     div.dataset.id = node.id;
     div.style.left = node.x + 'px';
     div.style.top = node.y + 'px';
@@ -179,23 +184,9 @@ const MindmapView = (() => {
       // Store.addNode calls notify() synchronously, so the DOM is already
       // re-rendered with the new node by the time addNode returns
       const child = Store.addNode('New node', node.id);
-      const childDiv = worldEl.querySelector(`.mindmap-node[data-id="${child.id}"]`);
-      if (childDiv) startEditingNode(child.id, childDiv);
+      NotesEditor.open(child.id);
     });
     div.appendChild(addBtn);
-
-    // notes button - always visible, even in view mode (it's read-only there)
-    const notesBtn = document.createElement('button');
-    notesBtn.className = 'mindmap-node-notes';
-    if (node.notes) notesBtn.classList.add('has-notes');
-    notesBtn.title = 'Notes';
-    notesBtn.textContent = '📝';
-    notesBtn.addEventListener('pointerdown', e => e.stopPropagation());
-    notesBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      NotesEditor.open(node.id);
-    });
-    div.appendChild(notesBtn);
 
     // right-click as an extra shortcut for deleting on desktop (mouse)
     div.addEventListener('contextmenu', e => {
@@ -210,19 +201,17 @@ const MindmapView = (() => {
     return div;
   }
 
-  // drag to move a node; tapping/clicking without movement twice in quick
-  // succession (double-click/double-tap) renames it. Uses Pointer Events
-  // instead of separate mouse+touch handling, and avoids the browser's
-  // built-in dblclick synthesis (which touch doesn't always trigger reliably).
+  // tapping/clicking without movement opens the node; dragging past a
+  // small threshold moves it instead (edit mode only). Uses Pointer Events
+  // instead of separate mouse+touch handling.
   function makeDraggable(div, node) {
-    let lastTapTime = 0;
     const MOVE_THRESHOLD = 5; // px, before a tap counts as a drag
 
     div.addEventListener('pointerdown', e => {
-      if (!AppMode.isEditMode()) return; // nodes can't be dragged or renamed in view mode
       if (e.button !== undefined && e.button > 0) return;
       e.stopPropagation(); // avoid triggering canvas panning
 
+      const editMode = AppMode.isEditMode();
       const startX = e.clientX;
       const startY = e.clientY;
       const startLeft = node.x;
@@ -235,9 +224,9 @@ const MindmapView = (() => {
         const dy = (ev.clientY - startY) / zoom;
         if (!moved && (Math.abs(ev.clientX - startX) > MOVE_THRESHOLD || Math.abs(ev.clientY - startY) > MOVE_THRESHOLD)) {
           moved = true;
-          div.classList.add('dragging-node');
+          if (editMode) div.classList.add('dragging-node');
         }
-        if (!moved) return;
+        if (!moved || !editMode) return; // view mode: track the tap, but never actually move the node
         ev.preventDefault();
 
         const newX = Math.max(0, startLeft + dx);
@@ -264,7 +253,7 @@ const MindmapView = (() => {
         div.classList.remove('dragging-node');
         document.querySelectorAll('.mindmap-node.drop-target').forEach(el => el.classList.remove('drop-target'));
 
-        if (moved) {
+        if (moved && editMode) {
           const dx = (ev.clientX - startX) / zoom;
           const dy = (ev.clientY - startY) / zoom;
           const newX = Math.max(0, startLeft + dx);
@@ -273,44 +262,14 @@ const MindmapView = (() => {
           if (dropTargetId) {
             Store.moveNode(node.id, dropTargetId);
           }
-        } else {
-          // a plain tap/click without movement -> check for a double-tap
-          const now = Date.now();
-          if (now - lastTapTime < 350) {
-            lastTapTime = 0;
-            startEditingNode(node.id, div);
-          } else {
-            lastTapTime = now;
-          }
+        } else if (!moved) {
+          NotesEditor.open(node.id);
         }
       }
 
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', finish);
       document.addEventListener('pointercancel', finish);
-    });
-  }
-
-  function startEditingNode(id, div) {
-    const nameSpan = div.querySelector('.mindmap-node-name');
-    const node = Store.getById(id);
-
-    const input = document.createElement('input');
-    input.className = 'mindmap-node-input';
-    input.type = 'text';
-    input.value = node.name;
-    input.addEventListener('pointerdown', e => e.stopPropagation());
-    nameSpan.replaceWith(input);
-    input.focus();
-    input.select();
-
-    function commit() {
-      Store.renameNode(id, input.value);
-    }
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') input.blur();
-      if (e.key === 'Escape') { input.value = node.name; input.blur(); }
     });
   }
 
