@@ -36,7 +36,7 @@ const DriveSync = (() => {
   const FILE_ID_KEY = 'rpg-notes-drive-file-id';
   const BACKUP_FILE_ID_KEY = 'rpg-notes-drive-backup-file-id';
   const FOLDER_ID_KEY = 'rpg-notes-drive-folder-id';
-  const UPLOAD_DEBOUNCE_MS = 1500;
+  const UPLOAD_DEBOUNCE_MS = 10000;
 
   let tokenClient = null;
   let accessToken = null;
