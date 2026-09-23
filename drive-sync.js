@@ -26,12 +26,15 @@ const DriveSync = (() => {
   const CLIENT_ID = '162521818251-4h6jcsqivhk66v0160l3u54sck8g16iq.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const FILE_NAME = 'rpg-notes.json';
+  const FOLDER_NAME = 'RPG Noter'; // mappen på Drive filen skal ligge i - ret her hvis du vil have et andet navn
   const FILE_ID_KEY = 'rpg-notes-drive-file-id';
+  const FOLDER_ID_KEY = 'rpg-notes-drive-folder-id';
   const UPLOAD_DEBOUNCE_MS = 1500;
 
   let tokenClient = null;
   let accessToken = null;
   let fileId = localStorage.getItem(FILE_ID_KEY) || null;
+  let folderId = localStorage.getItem(FOLDER_ID_KEY) || null;
   let uploadTimer = null;
   let refreshPromise = null;
   let suppressUpload = false;
@@ -136,21 +139,74 @@ const DriveSync = (() => {
   }
 
   async function ensureFile() {
-    if (fileId) return;
-    const found = await findFile();
-    fileId = found || await createFile();
+    const folder = await ensureFolder();
+
+    if (fileId) {
+      // allerede kendt fil - sørg for at den rent faktisk ligger i mappen
+      // (flytter fx en gammel fil, der blev oprettet i roden før mappen fandtes)
+      await moveFileToFolder(fileId, folder);
+      return;
+    }
+
+    const foundInFolder = await findFile(folder);
+    if (foundInFolder) {
+      fileId = foundInFolder;
+    } else {
+      // faldback: en fil oprettet før mappe-understøttelsen fandtes kan
+      // stadig ligge et andet sted på Drive - genbrug den i stedet for at
+      // oprette en ny (og dermed få to kopier af noterne)
+      const foundAnywhere = await findFile(null);
+      if (foundAnywhere) {
+        fileId = foundAnywhere;
+        await moveFileToFolder(fileId, folder);
+      } else {
+        fileId = await createFile(folder);
+      }
+    }
     localStorage.setItem(FILE_ID_KEY, fileId);
   }
 
-  async function findFile() {
-    const q = encodeURIComponent(`name='${FILE_NAME}' and trashed=false`);
+  async function ensureFolder() {
+    if (folderId) return folderId;
+    const q = encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
+    const data = await res.json();
+    if (data.files && data.files.length > 0) {
+      folderId = data.files[0].id;
+    } else {
+      const createRes = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
+      });
+      const created = await createRes.json();
+      folderId = created.id;
+    }
+    localStorage.setItem(FOLDER_ID_KEY, folderId);
+    return folderId;
+  }
+
+  async function findFile(inFolderId) {
+    let query = `name='${FILE_NAME}' and trashed=false`;
+    if (inFolderId) query += ` and '${inFolderId}' in parents`;
+    const q = encodeURIComponent(query);
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
     const data = await res.json();
     return data.files && data.files.length > 0 ? data.files[0].id : null;
   }
 
-  async function createFile() {
-    const metadata = { name: FILE_NAME, mimeType: 'application/json' };
+  async function moveFileToFolder(id, targetFolderId) {
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=parents`);
+    const data = await res.json();
+    const currentParents = data.parents || [];
+    if (currentParents.includes(targetFolderId)) return; // ligger allerede i mappen
+    const params = new URLSearchParams({ addParents: targetFolderId, fields: 'id,parents' });
+    if (currentParents.length > 0) params.set('removeParents', currentParents.join(','));
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?${params.toString()}`, { method: 'PATCH' });
+  }
+
+  async function createFile(inFolderId) {
+    const metadata = { name: FILE_NAME, mimeType: 'application/json', parents: [inFolderId] };
     const boundary = 'rpgnotes-boundary';
     const body =
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
