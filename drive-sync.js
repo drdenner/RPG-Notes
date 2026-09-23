@@ -185,30 +185,56 @@ const DriveSync = (() => {
     const campaignId = Store.getCurrentCampaignId();
     const campaignName = Store.getCurrentCampaignName();
     const folder = await ensureFolder();
+    const expectedName = fileNameFor(campaignName);
 
     if (fileId) {
-      // already know the file - make sure it actually lives in the folder
-      await moveFileToFolder(fileId, folder);
-      return;
+      // verify the cached file id still actually belongs to THIS campaign -
+      // a stale/corrupted local cache (e.g. left over from a bug) could
+      // otherwise silently sync this campaign's edits into a different
+      // campaign's Drive file without any error ever being visible
+      if (await fileNameMatches(fileId, expectedName)) {
+        await moveFileToFolder(fileId, folder);
+        return;
+      }
+      fileId = null; // stale reference - fall through and re-resolve below
     }
 
-    const found = await findFileByName(fileNameFor(campaignName), folder);
-    fileId = found || await createFileByName(fileNameFor(campaignName), folder);
+    const found = await findFileByName(expectedName, folder);
+    fileId = found || await createFileByName(expectedName, folder);
     localStorage.setItem(fileIdKeyFor(campaignId), fileId);
   }
 
   // the backup file is separate from the main synced file and only ever
   // written by the Backup button (see backupNow) - never by auto-sync
   async function ensureBackupFile() {
-    if (backupFileId) return backupFileId;
     const campaignId = Store.getCurrentCampaignId();
     const campaignName = Store.getCurrentCampaignName();
     const folder = await ensureFolder();
+    const expectedName = backupFileNameFor(campaignName);
 
-    const found = await findFileByName(backupFileNameFor(campaignName), folder);
-    backupFileId = found || await createFileByName(backupFileNameFor(campaignName), folder);
+    if (backupFileId) {
+      if (await fileNameMatches(backupFileId, expectedName)) return backupFileId;
+      backupFileId = null;
+    }
+
+    const found = await findFileByName(expectedName, folder);
+    backupFileId = found || await createFileByName(expectedName, folder);
     localStorage.setItem(backupFileIdKeyFor(campaignId), backupFileId);
     return backupFileId;
+  }
+
+  // true if the given Drive file id's current name matches what we expect
+  // for the active campaign; false (never throws) if it's a mismatch, was
+  // deleted, or anything else went wrong reading it - all treated the same
+  // way by the caller: forget the cached id and re-resolve from scratch
+  async function fileNameMatches(id, expectedName) {
+    try {
+      const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=name,trashed`);
+      const data = await res.json();
+      return !data.trashed && data.name === expectedName;
+    } catch (err) {
+      return false;
+    }
   }
 
   // memoized so concurrent callers (e.g. an in-flight connect racing a
