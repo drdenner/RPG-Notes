@@ -5,12 +5,21 @@
 // rest of your Drive.
 //
 // Each campaign (see store.js) gets its own pair of files in the same
-// Drive folder: a main file that's kept in sync automatically on every
-// change, and a backup file that only ever changes when the Backup button
-// calls backupNow(). Switching the active campaign switches which pair of
-// files this module talks to (see the Store.subscribeCampaignChange hook
-// near the bottom) - campaigns never share or mix data on Drive, same as
-// they never do locally.
+// Drive folder, named after the campaign: "<name>.json" is kept in sync
+// automatically on every change, "<name>-backup.json" only ever changes
+// when the Backup button calls backupNow(). Renaming a campaign renames
+// its Drive files to match. Switching the active campaign switches which
+// pair of files this module talks to (see the Store.subscribeCampaignChange
+// hook near the bottom) - campaigns never share or mix data on Drive, same
+// as they never do locally.
+//
+// Every operation that touches which-campaign-is-synced (the initial
+// connect, a campaign switch, a rename) runs through `queueSync()`, which
+// chains them one after another instead of letting them run concurrently.
+// Without that, switching to a new campaign while the previous campaign's
+// initial connect was still in flight could let the two overwrite each
+// other's `fileId`/`folderId` state and end up syncing the wrong campaign's
+// edits into the wrong Drive file.
 //
 // ONE-TIME SETUP (done once, by you):
 //   1. Go to https://console.cloud.google.com/ and create a project
@@ -38,17 +47,26 @@ const DriveSync = (() => {
   const FOLDER_ID_KEY = 'rpg-notes-drive-folder-id';
   const UPLOAD_DEBOUNCE_MS = 10000;
 
-  function fileNameFor(campaignId) { return `rpg-notes-${campaignId}.json`; }
-  function backupFileNameFor(campaignId) { return `rpg-notes-${campaignId}-backup.json`; }
+  // the LOCAL "which Drive file id belongs to which campaign" cache is
+  // keyed by the campaign's stable id (never changes), even though the
+  // actual file NAME on Drive is the campaign's name (can change via rename)
+  function sanitizeFileName(name) {
+    return (name || 'campaign').trim().replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120) || 'campaign';
+  }
+  function fileNameFor(campaignName) { return `${sanitizeFileName(campaignName)}.json`; }
+  function backupFileNameFor(campaignName) { return `${sanitizeFileName(campaignName)}-backup.json`; }
   function fileIdKeyFor(campaignId) { return 'rpg-notes-drive-file-id-' + campaignId; }
   function backupFileIdKeyFor(campaignId) { return 'rpg-notes-drive-backup-file-id-' + campaignId; }
 
   let tokenClient = null;
   let accessToken = null;
   let syncedCampaignId = Store.getCurrentCampaignId();
+  let syncedCampaignName = Store.getCurrentCampaignName();
   let fileId = localStorage.getItem(fileIdKeyFor(syncedCampaignId)) || null;
   let backupFileId = localStorage.getItem(backupFileIdKeyFor(syncedCampaignId)) || null;
   let folderId = localStorage.getItem(FOLDER_ID_KEY) || null;
+  let folderPromise = null; // memoizes an in-flight ensureFolder() call so concurrent callers share it
+  let syncQueue = Promise.resolve(); // serializes connect/switch/rename operations, see header comment
   let uploadTimer = null;
   let refreshPromise = null;
   let suppressUpload = false;
@@ -60,6 +78,13 @@ const DriveSync = (() => {
 
   function setStatus(status, detail) {
     statusCallback(status, detail || '');
+  }
+
+  // runs fn() after every previously queued sync operation has finished
+  // (successfully or not), so overlapping calls never run concurrently
+  function queueSync(fn) {
+    syncQueue = syncQueue.then(fn, fn);
+    return syncQueue;
   }
 
   // status: 'unconfigured' | 'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'
@@ -104,12 +129,16 @@ const DriveSync = (() => {
     setStatus('disconnected');
   }
 
-  async function onTokenResponse(resp) {
+  function onTokenResponse(resp) {
     if (resp.error) {
       setStatus(fileId ? 'disconnected' : 'error', resp.error);
       return;
     }
     accessToken = resp.access_token;
+    queueSync(() => connectCurrentCampaign());
+  }
+
+  async function connectCurrentCampaign() {
     try {
       await ensureFile();
       await pull();
@@ -154,6 +183,7 @@ const DriveSync = (() => {
 
   async function ensureFile() {
     const campaignId = Store.getCurrentCampaignId();
+    const campaignName = Store.getCurrentCampaignName();
     const folder = await ensureFolder();
 
     if (fileId) {
@@ -162,8 +192,8 @@ const DriveSync = (() => {
       return;
     }
 
-    const found = await findFileByName(fileNameFor(campaignId), folder);
-    fileId = found || await createFileByName(fileNameFor(campaignId), folder);
+    const found = await findFileByName(fileNameFor(campaignName), folder);
+    fileId = found || await createFileByName(fileNameFor(campaignName), folder);
     localStorage.setItem(fileIdKeyFor(campaignId), fileId);
   }
 
@@ -172,16 +202,26 @@ const DriveSync = (() => {
   async function ensureBackupFile() {
     if (backupFileId) return backupFileId;
     const campaignId = Store.getCurrentCampaignId();
+    const campaignName = Store.getCurrentCampaignName();
     const folder = await ensureFolder();
 
-    const found = await findFileByName(backupFileNameFor(campaignId), folder);
-    backupFileId = found || await createFileByName(backupFileNameFor(campaignId), folder);
+    const found = await findFileByName(backupFileNameFor(campaignName), folder);
+    backupFileId = found || await createFileByName(backupFileNameFor(campaignName), folder);
     localStorage.setItem(backupFileIdKeyFor(campaignId), backupFileId);
     return backupFileId;
   }
 
-  async function ensureFolder() {
-    if (folderId) return folderId;
+  // memoized so concurrent callers (e.g. an in-flight connect racing a
+  // campaign switch) share the same lookup/creation instead of each
+  // independently deciding the folder doesn't exist yet and creating a
+  // duplicate
+  function ensureFolder() {
+    if (folderId) return Promise.resolve(folderId);
+    if (!folderPromise) folderPromise = resolveFolder().finally(() => { folderPromise = null; });
+    return folderPromise;
+  }
+
+  async function resolveFolder() {
     const q = encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
     const data = await res.json();
@@ -217,6 +257,14 @@ const DriveSync = (() => {
     const params = new URLSearchParams({ addParents: targetFolderId, fields: 'id,parents' });
     if (currentParents.length > 0) params.set('removeParents', currentParents.join(','));
     await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?${params.toString()}`, { method: 'PATCH' });
+  }
+
+  async function renameDriveFile(id, newName) {
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
   }
 
   async function createFileByName(name, inFolderId) {
@@ -256,11 +304,13 @@ const DriveSync = (() => {
     suppressUpload = false;
   }
 
-  // automatically uploads to Drive a short while after the last change
+  // automatically uploads to Drive a short while after the last change.
+  // Queued (see header comment) so it can't fire mid-way through a
+  // campaign switch and use a fileId that's about to change.
   function scheduleUpload() {
     if (suppressUpload || !accessToken || !fileId) return;
     clearTimeout(uploadTimer);
-    uploadTimer = setTimeout(push, UPLOAD_DEBOUNCE_MS);
+    uploadTimer = setTimeout(() => queueSync(() => push()), UPLOAD_DEBOUNCE_MS);
   }
 
   async function push() {
@@ -281,15 +331,23 @@ const DriveSync = (() => {
 
   function syncNow() {
     if (!accessToken) { connect(); return; }
-    push();
+    queueSync(() => push());
   }
 
   // writes the current notes to the separate backup file. Unlike the main
   // synced file, this one is NEVER touched by auto-sync (scheduleUpload) -
   // it only ever changes when this is called, i.e. when the Backup button
-  // is pressed.
-  async function backupNow() {
-    if (!accessToken) { connect(); throw new Error('Not connected to Drive yet - try again once connected.'); }
+  // is pressed. Queued (see header comment) so it can't run while a
+  // campaign switch is still in flight and read a stale backupFileId.
+  function backupNow() {
+    if (!accessToken) {
+      connect();
+      return Promise.reject(new Error('Not connected to Drive yet - try again once connected.'));
+    }
+    return queueSync(() => doBackup());
+  }
+
+  async function doBackup() {
     const id = await ensureBackupFile();
     await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
       method: 'PATCH',
@@ -312,29 +370,42 @@ const DriveSync = (() => {
   // any change to the notes (create/rename/delete/move) should end up in Drive
   Store.subscribe(scheduleUpload);
 
-  // switching the active campaign means switching which pair of Drive files
-  // this module talks to. Ignored if the "change" wasn't actually a switch
-  // (e.g. just renaming the current campaign fires the same event).
-  Store.subscribeCampaignChange(async () => {
-    const newCampaignId = Store.getCurrentCampaignId();
-    if (newCampaignId === syncedCampaignId) return;
-    syncedCampaignId = newCampaignId;
-
-    clearTimeout(uploadTimer);
-    fileId = localStorage.getItem(fileIdKeyFor(newCampaignId)) || null;
-    backupFileId = localStorage.getItem(backupFileIdKeyFor(newCampaignId)) || null;
-
-    if (!accessToken) return; // not connected - nothing to sync right now
-    setStatus('connecting');
-    try {
-      await ensureFile();
-      await pull();
-      setStatus('connected');
-    } catch (err) {
-      console.error('Drive sync failed after switching campaign', err);
-      setStatus('error', err.message);
-    }
+  // fires when the active campaign changes OR the current campaign is
+  // renamed. Queued so it can never run concurrently with the initial
+  // connect or another switch/rename still in progress (see header comment).
+  Store.subscribeCampaignChange(() => {
+    queueSync(() => handleCampaignChange());
   });
+
+  async function handleCampaignChange() {
+    const newCampaignId = Store.getCurrentCampaignId();
+    const newCampaignName = Store.getCurrentCampaignName();
+
+    if (newCampaignId !== syncedCampaignId) {
+      // switched to a different campaign entirely - point at its own files
+      syncedCampaignId = newCampaignId;
+      syncedCampaignName = newCampaignName;
+      clearTimeout(uploadTimer);
+      fileId = localStorage.getItem(fileIdKeyFor(newCampaignId)) || null;
+      backupFileId = localStorage.getItem(backupFileIdKeyFor(newCampaignId)) || null;
+      if (!accessToken) return; // not connected - nothing to sync right now
+      setStatus('connecting');
+      await connectCurrentCampaign();
+      return;
+    }
+
+    if (newCampaignName !== syncedCampaignName) {
+      // same campaign, just renamed - rename its Drive files to match
+      syncedCampaignName = newCampaignName;
+      if (!accessToken) return;
+      try {
+        if (fileId) await renameDriveFile(fileId, fileNameFor(newCampaignName));
+        if (backupFileId) await renameDriveFile(backupFileId, backupFileNameFor(newCampaignName));
+      } catch (err) {
+        console.error('Could not rename the Drive file', err);
+      }
+    }
+  }
 
   return { init, connect, disconnect, syncNow, backupNow, isConfigured };
 })();
