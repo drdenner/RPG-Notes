@@ -28,7 +28,6 @@ const NotesEditor = (() => {
 
     overlayEl = document.createElement('div');
     overlayEl.className = 'notes-overlay';
-    overlayEl.hidden = true;
     overlayEl.addEventListener('mousedown', e => {
       if (e.target === overlayEl) close();
     });
@@ -103,7 +102,7 @@ const NotesEditor = (() => {
     titleEl.textContent = node.name;
     textareaEl.value = node.notes || '';
     applyMode();
-    overlayEl.hidden = false;
+    overlayEl.classList.add('open');
     if (AppMode.isEditMode()) textareaEl.focus();
   }
 
@@ -121,7 +120,7 @@ const NotesEditor = (() => {
   // always just hides the panel - no saving, no confirmation, nothing that
   // could fail and leave the panel stuck open
   function close() {
-    overlayEl.hidden = true;
+    overlayEl.classList.remove('open');
     currentId = null;
   }
 

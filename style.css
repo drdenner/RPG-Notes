@@ -548,11 +548,15 @@ body.view-mode .mindmap-node {
   position: fixed;
   inset: 0;
   background: rgba(10, 8, 6, 0.7);
-  display: flex;
+  display: none; /* toggled via .open, NOT the [hidden] attribute - see .notes-overlay.open below */
   align-items: center;
   justify-content: center;
   z-index: 50;
   padding: 20px;
+}
+
+.notes-overlay.open {
+  display: flex;
 }
 
 .notes-panel {
