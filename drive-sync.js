@@ -408,10 +408,25 @@ const DriveSync = (() => {
     const newCampaignName = Store.getCurrentCampaignName();
 
     if (newCampaignId !== syncedCampaignId) {
-      // switched to a different campaign entirely - point at its own files
+      // switched to a different campaign entirely - point at its own files.
+      // First flush any still-pending debounced upload for the campaign
+      // we're leaving (uses the OLD fileId, before it's reassigned below),
+      // so a quick switch right after an edit doesn't just cancel it and
+      // leave that edit stuck locally, never reaching Drive.
+      if (uploadTimer) {
+        clearTimeout(uploadTimer);
+        uploadTimer = null;
+        if (accessToken && fileId) {
+          try {
+            await push();
+          } catch (err) {
+            console.error('Could not save pending changes before switching campaigns', err);
+          }
+        }
+      }
+
       syncedCampaignId = newCampaignId;
       syncedCampaignName = newCampaignName;
-      clearTimeout(uploadTimer);
       fileId = localStorage.getItem(fileIdKeyFor(newCampaignId)) || null;
       backupFileId = localStorage.getItem(backupFileIdKeyFor(newCampaignId)) || null;
       if (!accessToken) return; // not connected - nothing to sync right now
