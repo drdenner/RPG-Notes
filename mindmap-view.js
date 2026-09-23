@@ -268,6 +268,7 @@ const MindmapView = (() => {
   function buildNodeEl(entry) {
     const node = entry.cached;
     const div = document.createElement('div');
+    entry.div = div; // set before makeDraggable(entry) reads it below
     div.className = 'mindmap-node';
     if (node.notes) div.classList.add('has-notes');
     div.dataset.id = node.id;
