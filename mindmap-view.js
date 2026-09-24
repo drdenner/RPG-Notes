@@ -228,7 +228,7 @@ const MindmapView = (() => {
     }
 
     // a brand new line, or one that now points at a different parent
-    // (re-parented via drag-and-drop), always needs fresh endpoints -
+    // (re-parented in the list view), always needs fresh endpoints -
     // this can't be inferred from positionChanged/sizeChanged alone
     let reconnected = false;
     if (!line) {
@@ -323,8 +323,9 @@ const MindmapView = (() => {
   }
 
   // tapping/clicking without movement opens the node; dragging past a
-  // small threshold moves it instead (edit mode only). Uses Pointer Events
-  // instead of separate mouse+touch handling.
+  // small threshold moves it instead (edit mode only). Dragging only ever
+  // changes the node's position - re-parenting is done in the list view.
+  // Uses Pointer Events instead of separate mouse+touch handling.
   //
   // Performance: no Store writes and no full re-render happen while
   // dragging - only this node's style.left/top and its own connection
@@ -345,7 +346,6 @@ const MindmapView = (() => {
       const startY = e.clientY;
       const startLeft = entry.cached.x;
       const startTop = entry.cached.y;
-      let dropTargetId = null;
       let moved = false;
       let rafId = null;
       let pendingEvent = null;
@@ -368,16 +368,6 @@ const MindmapView = (() => {
         entry.cached.x = newX;
         entry.cached.y = newY;
         updateLinksForNode(entry);
-
-        document.querySelectorAll('.mindmap-node.drop-target').forEach(el => el.classList.remove('drop-target'));
-        const elUnder = document.elementFromPoint(ev.clientX, ev.clientY);
-        const targetDiv = elUnder && elUnder.closest('.mindmap-node');
-        if (targetDiv && targetDiv !== div) {
-          dropTargetId = targetDiv.dataset.id;
-          targetDiv.classList.add('drop-target');
-        } else {
-          dropTargetId = null;
-        }
       }
 
       function onMove(ev) {
@@ -400,13 +390,9 @@ const MindmapView = (() => {
         applyMove(ev);
 
         div.classList.remove('dragging-node');
-        document.querySelectorAll('.mindmap-node.drop-target').forEach(el => el.classList.remove('drop-target'));
 
         if (moved && editMode) {
-          // one Store mutation for position + (optional) new parent
-          const patch = { x: entry.cached.x, y: entry.cached.y };
-          if (dropTargetId) patch.parentId = dropTargetId;
-          Store.updateNode(entry.cached.id, patch);
+          Store.moveNodePosition(entry.cached.id, entry.cached.x, entry.cached.y);
         } else if (!moved) {
           NotesEditor.open(entry.cached.id);
         }

@@ -462,11 +462,6 @@ body.view-mode .mindmap-node {
   z-index: 5;
 }
 
-.mindmap-node.drop-target {
-  outline: 2px solid var(--accent-gold-bright);
-  background: var(--bg-elevated-hover);
-}
-
 .mindmap-node-name {
   pointer-events: none;
   white-space: pre-wrap;
@@ -609,6 +604,28 @@ body.view-mode .mindmap-node {
   padding: 7px 16px;
   font-size: 0.85rem;
   min-width: 76px;
+}
+
+.notes-unsaved-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-soft);
+  border-left: 3px solid var(--accent-gold);
+}
+
+.notes-unsaved-bar[hidden] {
+  display: none; /* display: flex above would otherwise override [hidden] */
+}
+
+.notes-unsaved-msg {
+  flex: 1;
+  min-width: 140px;
+  color: var(--text-main);
+  font-size: 0.9rem;
 }
 
 .notes-hint {

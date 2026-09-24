@@ -36,8 +36,21 @@
 // version they didn't pick as a "-conflict-" copy on Drive first). Once
 // connected, edits are pushed automatically without re-checking Drive.
 //
-// ONE-TIME SETUP: see "Google Drive sync" in README.md for how to get a
-// Google OAuth Client ID - it goes into CLIENT_ID below.
+// ONE-TIME SETUP (done once, by you):
+//   1. Go to https://console.cloud.google.com/ and create a project
+//   2. Under "APIs & Services" -> enable "Google Drive API"
+//   3. Under "OAuth consent screen": choose "External", fill in the app
+//      name, and add your own Google account as a "Test user" (so the app
+//      doesn't need to go through Google's full verification for you to
+//      use it yourself)
+//   4. Under "Credentials" -> "Create credentials" -> "OAuth client ID"
+//      -> pick "Web application"
+//   5. Under "Authorized JavaScript origins": add the URL(s) the app is
+//      served from. Google OAuth does NOT work with file:// or a plain
+//      local IP over http - only https://... or http://localhost.
+//      Easiest solution: host the folder somewhere with https (e.g.
+//      GitHub Pages) and open that SAME URL on both pc and tablet.
+//   6. Copy the generated "Client ID" into CLIENT_ID below.
 //
 // Without a valid Client ID, the rest of the app works exactly as before -
 // Drive is 100% optional, everything still saves locally in localStorage.

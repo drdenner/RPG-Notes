@@ -9,9 +9,11 @@
 // rich-text editing needed - you just type.
 //
 // Explicit Save button - nothing is written to the Store until you click
-// it. Closing (✕, a tap outside the panel, or Escape) asks first if there
-// are unsaved changes - a stray tap outside the panel on a tablet
-// shouldn't silently throw away what you typed.
+// it. Closing (✕, a tap outside the panel, or Escape) with unsaved changes
+// shows a small bar in the panel instead (Save / Discard / Keep editing) -
+// a stray tap outside the panel on a tablet shouldn't silently throw away
+// what you typed. (A bar rather than confirm() dialogs, since a
+// three-way choice doesn't fit OK/Cancel.)
 //
 // Safety note: the raw text is stored as-is (see Store.updateNode).
 // Turning it into HTML always escapes the text FIRST and only then
@@ -24,6 +26,7 @@ const NotesEditor = (() => {
   const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
 
   let overlayEl, panelEl, titleInputEl, hintEl, textareaEl, previewLabelEl, previewEl, saveBtn, closeBtn;
+  let unsavedBarEl, unsavedSaveBtn;
   let currentId = null;
   let savedName = '';  // what the fields held when opened / last saved,
   let savedNotes = ''; // used to detect unsaved changes
@@ -40,7 +43,10 @@ const NotesEditor = (() => {
     });
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && overlayEl.classList.contains('open')) requestClose();
+      if (e.key !== 'Escape' || !overlayEl.classList.contains('open')) return;
+      // Escape while the unsaved-changes bar is showing = keep editing
+      if (!unsavedBarEl.hidden) hideUnsavedBar();
+      else requestClose();
     });
 
     panelEl = document.createElement('div');
@@ -70,6 +76,32 @@ const NotesEditor = (() => {
     headerActions.append(saveBtn, closeBtn);
     header.append(titleInputEl, headerActions);
 
+    // shown by requestClose() when there are unsaved changes
+    unsavedBarEl = document.createElement('div');
+    unsavedBarEl.className = 'notes-unsaved-bar';
+    unsavedBarEl.hidden = true;
+
+    const unsavedMsg = document.createElement('span');
+    unsavedMsg.className = 'notes-unsaved-msg';
+    unsavedMsg.textContent = 'You have unsaved changes.';
+
+    unsavedSaveBtn = document.createElement('button');
+    unsavedSaveBtn.className = 'btn btn-primary';
+    unsavedSaveBtn.textContent = 'Save';
+    unsavedSaveBtn.addEventListener('click', () => { save(); close(); });
+
+    const discardBtn = document.createElement('button');
+    discardBtn.className = 'btn';
+    discardBtn.textContent = 'Discard';
+    discardBtn.addEventListener('click', close);
+
+    const keepEditingBtn = document.createElement('button');
+    keepEditingBtn.className = 'btn';
+    keepEditingBtn.textContent = 'Keep editing';
+    keepEditingBtn.addEventListener('click', hideUnsavedBar);
+
+    unsavedBarEl.append(unsavedMsg, unsavedSaveBtn, discardBtn, keepEditingBtn);
+
     hintEl = document.createElement('div');
     hintEl.className = 'notes-hint';
     hintEl.textContent = 'Tip: **bold text** for bold - links are detected automatically.';
@@ -85,7 +117,7 @@ const NotesEditor = (() => {
     previewEl = document.createElement('div');
     previewEl.className = 'notes-preview';
 
-    panelEl.append(header, hintEl, textareaEl, previewLabelEl, previewEl);
+    panelEl.append(header, unsavedBarEl, hintEl, textareaEl, previewLabelEl, previewEl);
     overlayEl.appendChild(panelEl);
     document.body.appendChild(overlayEl);
 
@@ -143,23 +175,26 @@ const NotesEditor = (() => {
       (titleInputEl.value !== savedName || textareaEl.value !== savedNotes);
   }
 
-  // closes, but asks first if there are unsaved changes: OK saves, and
-  // Cancel asks again whether to discard them (Cancel there keeps the
-  // panel open) - so throwing away changes always takes a deliberate "yes"
+  // closes right away if nothing changed; otherwise shows the unsaved-
+  // changes bar and lets its buttons decide - so throwing away changes
+  // always takes a deliberate click on Discard
   function requestClose() {
     if (hasUnsavedChanges()) {
-      if (confirm('Save your changes to this node before closing?')) {
-        save();
-      } else if (!confirm('Discard your unsaved changes?')) {
-        return;
-      }
+      unsavedBarEl.hidden = false;
+      unsavedSaveBtn.focus();
+      return;
     }
     close();
+  }
+
+  function hideUnsavedBar() {
+    unsavedBarEl.hidden = true;
   }
 
   // just hides the panel - no saving, nothing that could fail and leave
   // the panel stuck open
   function close() {
+    hideUnsavedBar();
     overlayEl.classList.remove('open');
     currentId = null;
   }
