@@ -36,21 +36,8 @@
 // version they didn't pick as a "-conflict-" copy on Drive first). Once
 // connected, edits are pushed automatically without re-checking Drive.
 //
-// ONE-TIME SETUP (done once, by you):
-//   1. Go to https://console.cloud.google.com/ and create a project
-//   2. Under "APIs & Services" -> enable "Google Drive API"
-//   3. Under "OAuth consent screen": choose "External", fill in the app
-//      name, and add your own Google account as a "Test user" (so the app
-//      doesn't need to go through Google's full verification for you to
-//      use it yourself)
-//   4. Under "Credentials" -> "Create credentials" -> "OAuth client ID"
-//      -> pick "Web application"
-//   5. Under "Authorized JavaScript origins": add the URL(s) the app is
-//      served from. Google OAuth does NOT work with file:// or a plain
-//      local IP over http - only https://... or http://localhost.
-//      Easiest solution: host the folder somewhere with https (e.g.
-//      GitHub Pages) and open that SAME URL on both pc and tablet.
-//   6. Copy the generated "Client ID" into CLIENT_ID below.
+// ONE-TIME SETUP: see "Google Drive sync" in README.md for how to get a
+// Google OAuth Client ID - it goes into CLIENT_ID below.
 //
 // Without a valid Client ID, the rest of the app works exactly as before -
 // Drive is 100% optional, everything still saves locally in localStorage.
@@ -60,14 +47,14 @@ const DriveSync = (() => {
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const FOLDER_NAME = 'RPG Notes'; // the Drive folder every campaign's files live in
   const FOLDER_ID_KEY = 'rpg-notes-drive-folder-id';
+  const DISCONNECTED_KEY = 'rpg-notes-drive-disconnected'; // set by Disconnect, cleared by Connect
   const UPLOAD_DEBOUNCE_MS = 10000;
 
   // the LOCAL "which Drive file id belongs to which campaign" cache is
   // keyed by the campaign's stable id (never changes), even though the
-  // actual file NAME on Drive is the campaign's name (can change via rename)
-  function sanitizeFileName(name) {
-    return (name || 'campaign').trim().replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120) || 'campaign';
-  }
+  // actual file NAME on Drive is the campaign's name (can change via rename).
+  // Store owns sanitizeFileName so it can keep sanitized names unique.
+  const sanitizeFileName = Store.sanitizeFileName;
   function fileNameFor(campaignName) { return `${sanitizeFileName(campaignName)}.json`; }
   function backupFileNameFor(campaignName) { return `${sanitizeFileName(campaignName)}-backup.json`; }
   function fileIdKeyFor(campaignId) { return 'rpg-notes-drive-file-id-' + campaignId; }
@@ -127,8 +114,9 @@ const DriveSync = (() => {
         error_callback: onTokenError
       });
       setStatus('disconnected');
-      // used Drive before on this device (for this campaign)? try a silent reconnect
-      if (fileId) {
+      // used Drive before on this device (for this campaign)? try a silent
+      // reconnect - unless the user deliberately disconnected last time
+      if (fileId && localStorage.getItem(DISCONNECTED_KEY) !== '1') {
         tokenClient.requestAccessToken({ prompt: '' });
       }
     });
@@ -142,17 +130,26 @@ const DriveSync = (() => {
 
   function connect() {
     if (!tokenClient) return;
+    localStorage.removeItem(DISCONNECTED_KEY);
     setStatus('connecting');
     tokenClient.requestAccessToken({ prompt: 'consent' });
   }
 
+  // flushes a still-pending debounced upload first (queued, so it runs
+  // before the token is revoked), and remembers the choice so the next
+  // page load doesn't silently reconnect
   function disconnect() {
-    if (accessToken) {
-      google.accounts.oauth2.revoke(accessToken, () => {});
-    }
-    accessToken = null;
-    clearTimeout(uploadTimer);
-    setStatus('disconnected');
+    localStorage.setItem(DISCONNECTED_KEY, '1');
+    const hadPendingUpload = !!uploadTimer;
+    clearTimeout(uploadTimer); uploadTimer = null;
+    return queueSync(async () => {
+      if (hadPendingUpload) await push();
+      if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken, () => {});
+      }
+      accessToken = null;
+      setStatus('disconnected');
+    });
   }
 
   function onTokenResponse(resp) {
@@ -297,7 +294,7 @@ const DriveSync = (() => {
     if (!err) { pending.resolve(); return; }
     console.warn('Could not renew the Drive token silently', err);
     accessToken = null;
-    clearTimeout(uploadTimer);
+    clearTimeout(uploadTimer); uploadTimer = null;
     setStatus('reauth', err.message);
     err.reauth = true;
     pending.reject(err);
@@ -466,7 +463,7 @@ const DriveSync = (() => {
       // the next connect tries again)
       suppressUpload = false;
       fileId = null;
-      clearTimeout(uploadTimer);
+      clearTimeout(uploadTimer); uploadTimer = null;
       const msg = `Could not read "${syncedCampaignName}" from Google Drive (${err.message}). ` +
         'The Drive file was left untouched and syncing is paused for this campaign. Your local notes are unchanged.';
       alert(msg);
@@ -496,28 +493,47 @@ const DriveSync = (() => {
   function scheduleUpload() {
     if (suppressUpload || !accessToken || !fileId) return;
     clearTimeout(uploadTimer);
-    uploadTimer = setTimeout(() => queueSync(() => push()), UPLOAD_DEBOUNCE_MS);
+    uploadTimer = setTimeout(() => {
+      uploadTimer = null; // no longer pending once it has fired
+      queueSync(() => push());
+    }, UPLOAD_DEBOUNCE_MS);
   }
 
+  // the debounced upload would never reach Drive if the tab is closed (or
+  // the tablet goes to sleep) within those 10 seconds - so flush it as soon
+  // as the page is hidden, which browsers reliably report before unloading
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden' || !uploadTimer) return;
+    clearTimeout(uploadTimer);
+    uploadTimer = null;
+    queueSync(() => push({ keepalive: true }));
+  });
+
   // uploads the synced campaign and records the new modifiedTime; throws
-  // on failure (push() below is the status-reporting wrapper)
-  async function uploadCurrent() {
+  // on failure (push() below is the status-reporting wrapper).
+  // `keepalive` lets the request outlive the page if it's being closed -
+  // browsers only allow that for bodies under 64 KB, so larger campaigns
+  // fall back to a normal request (which usually still completes when the
+  // tab is merely hidden)
+  async function uploadCurrent({ keepalive = false } = {}) {
     const campaignId = syncedCampaignId;
     const seq = editSeq;
+    const body = Store.exportJSON(campaignId);
     const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=modifiedTime`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: Store.exportJSON(campaignId)
+      body,
+      keepalive: keepalive && new Blob([body]).size < 60000
     });
     const data = await res.json();
     recordSynced(campaignId, data.modifiedTime, seq);
   }
 
-  async function push() {
+  async function push(options) {
     if (!accessToken || !fileId) return;
     setStatus('syncing');
     try {
-      await uploadCurrent();
+      await uploadCurrent(options);
       setStatus('connected');
     } catch (err) {
       if (isReauthError(err)) return;

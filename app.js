@@ -118,7 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
     a.href = url;
     a.download = `rpg-notes-${safeName}.json`;
     a.click();
-    URL.revokeObjectURL(url);
+    // revoking right away can cancel the download in some browsers - give
+    // it a moment to start first
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 
   // --- import from a JSON file ---
@@ -146,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     reader.readAsText(file);
   });
 
-  // --- Google Drive sync (optional, see setup guide in drive-sync.js) ---
+  // --- Google Drive sync (optional, see setup guide in README.md) ---
   const driveDot = document.getElementById('drive-dot');
   const driveStatusText = document.getElementById('drive-status-text');
   const driveConnectBtn = document.getElementById('drive-connect-btn');
@@ -178,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   driveConnectBtn.addEventListener('click', () => {
     if (!DriveSync.isConfigured()) {
-      alert('Google Drive sync isn\'t set up yet.\n\nOpen drive-sync.js and follow the setup guide at the top of the file to get a Google Client ID.');
+      alert('Google Drive sync isn\'t set up yet.\n\nSee "Google Drive sync" in README.md for how to get a Google Client ID.');
       return;
     }
     DriveSync.connect();

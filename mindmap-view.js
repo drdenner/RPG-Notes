@@ -403,10 +403,10 @@ const MindmapView = (() => {
         document.querySelectorAll('.mindmap-node.drop-target').forEach(el => el.classList.remove('drop-target'));
 
         if (moved && editMode) {
-          Store.moveNodePosition(entry.cached.id, entry.cached.x, entry.cached.y);
-          if (dropTargetId) {
-            Store.moveNode(entry.cached.id, dropTargetId);
-          }
+          // one Store mutation for position + (optional) new parent
+          const patch = { x: entry.cached.x, y: entry.cached.y };
+          if (dropTargetId) patch.parentId = dropTargetId;
+          Store.updateNode(entry.cached.id, patch);
         } else if (!moved) {
           NotesEditor.open(entry.cached.id);
         }

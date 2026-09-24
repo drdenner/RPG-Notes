@@ -9,10 +9,11 @@
 // rich-text editing needed - you just type.
 //
 // Explicit Save button - nothing is written to the Store until you click
-// it. Close always just hides the panel, with no side effects, so it can
-// never get stuck.
+// it. Closing (✕, a tap outside the panel, or Escape) asks first if there
+// are unsaved changes - a stray tap outside the panel on a tablet
+// shouldn't silently throw away what you typed.
 //
-// Safety note: the raw text is stored as-is (see Store.updateNodeNotes).
+// Safety note: the raw text is stored as-is (see Store.updateNode).
 // Turning it into HTML always escapes the text FIRST and only then
 // re-introduces the two safe patterns below (**bold** and auto-links), so
 // there's no way for typed or imported text to inject arbitrary markup.
@@ -24,6 +25,8 @@ const NotesEditor = (() => {
 
   let overlayEl, panelEl, titleInputEl, hintEl, textareaEl, previewLabelEl, previewEl, saveBtn, closeBtn;
   let currentId = null;
+  let savedName = '';  // what the fields held when opened / last saved,
+  let savedNotes = ''; // used to detect unsaved changes
   let built = false;
 
   function build() {
@@ -33,7 +36,11 @@ const NotesEditor = (() => {
     overlayEl = document.createElement('div');
     overlayEl.className = 'notes-overlay';
     overlayEl.addEventListener('mousedown', e => {
-      if (e.target === overlayEl) close();
+      if (e.target === overlayEl) requestClose();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && overlayEl.classList.contains('open')) requestClose();
     });
 
     panelEl = document.createElement('div');
@@ -58,7 +65,7 @@ const NotesEditor = (() => {
     closeBtn.className = 'btn-icon';
     closeBtn.textContent = '✕';
     closeBtn.title = 'Close';
-    closeBtn.addEventListener('click', close);
+    closeBtn.addEventListener('click', requestClose);
 
     headerActions.append(saveBtn, closeBtn);
     header.append(titleInputEl, headerActions);
@@ -106,8 +113,8 @@ const NotesEditor = (() => {
     currentId = nodeId;
     const node = Store.getById(nodeId);
     if (!node) return;
-    titleInputEl.value = node.name;
-    textareaEl.value = node.notes || '';
+    titleInputEl.value = savedName = node.name;
+    textareaEl.value = savedNotes = node.notes || '';
     applyMode();
     overlayEl.classList.add('open');
     if (AppMode.isEditMode()) titleInputEl.focus();
@@ -115,8 +122,14 @@ const NotesEditor = (() => {
 
   function save() {
     if (!currentId) return;
-    Store.renameNode(currentId, titleInputEl.value);
-    Store.updateNodeNotes(currentId, textareaEl.value);
+    Store.updateNode(currentId, { name: titleInputEl.value, notes: textareaEl.value });
+    const node = Store.getById(currentId);
+    if (node) {
+      // the Store may have normalized the name (trimmed, or kept the old
+      // one if left empty) - show that, so it doesn't count as unsaved
+      titleInputEl.value = savedName = node.name;
+      savedNotes = node.notes;
+    }
     saveBtn.textContent = 'Saved ✓';
     saveBtn.disabled = true;
     setTimeout(() => {
@@ -125,8 +138,27 @@ const NotesEditor = (() => {
     }, 900);
   }
 
-  // always just hides the panel - no saving, no confirmation, nothing that
-  // could fail and leave the panel stuck open
+  function hasUnsavedChanges() {
+    return AppMode.isEditMode() && !!currentId &&
+      (titleInputEl.value !== savedName || textareaEl.value !== savedNotes);
+  }
+
+  // closes, but asks first if there are unsaved changes: OK saves, and
+  // Cancel asks again whether to discard them (Cancel there keeps the
+  // panel open) - so throwing away changes always takes a deliberate "yes"
+  function requestClose() {
+    if (hasUnsavedChanges()) {
+      if (confirm('Save your changes to this node before closing?')) {
+        save();
+      } else if (!confirm('Discard your unsaved changes?')) {
+        return;
+      }
+    }
+    close();
+  }
+
+  // just hides the panel - no saving, nothing that could fail and leave
+  // the panel stuck open
   function close() {
     overlayEl.classList.remove('open');
     currentId = null;

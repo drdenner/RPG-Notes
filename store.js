@@ -221,16 +221,26 @@ const Store = (() => {
     return c ? c.name : '';
   }
 
-  // two campaigns sharing a name would also share a Drive filename (see
-  // drive-sync.js) and overwrite each other there - so names must be
-  // unique; a duplicate gets " (2)", " (3)", etc. appended automatically
+  // the Drive filename (without extension) a campaign name maps to - see
+  // drive-sync.js. Lives here so uniqueCampaignName can check against it.
+  function sanitizeFileName(name) {
+    return (name || 'campaign').trim().replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120) || 'campaign';
+  }
+
+  // two campaigns whose names map to the same Drive filename (e.g. "A/B"
+  // and "A:B" both become "A-B.json", see sanitizeFileName) would overwrite
+  // each other there - so uniqueness is checked on the sanitized name; a
+  // duplicate gets " (2)", " (3)", etc. appended automatically
   function uniqueCampaignName(desiredName, excludeId) {
     const base = (desiredName || '').trim() || 'New campaign';
-    const taken = new Set(campaigns.filter(c => c.id !== excludeId).map(c => c.name));
-    if (!taken.has(base)) return base;
+    const taken = new Set(campaigns.filter(c => c.id !== excludeId).map(c => sanitizeFileName(c.name)));
+    if (!taken.has(sanitizeFileName(base))) return base;
+    // shortened so the suffix can't be cut off by sanitizeFileName's length
+    // limit (which would make every candidate collide and loop forever)
+    const stem = base.slice(0, 100);
     let n = 2;
-    while (taken.has(`${base} (${n})`)) n++;
-    return `${base} (${n})`;
+    while (taken.has(sanitizeFileName(`${stem} (${n})`))) n++;
+    return `${stem} (${n})`;
   }
 
   // creates a new, EMPTY campaign and switches to it
@@ -328,18 +338,51 @@ const Store = (() => {
     return { ...node };
   }
 
-  function renameNode(id, newName) {
+  // applies several changes to one node as ONE mutation (one save, one
+  // render, one Drive sync scheduled) - e.g. name + notes from the editor,
+  // or position + new parent from a mindmap drag. `patch` may contain any
+  // of name, notes, x, y, parentId; each is validated on its own, and an
+  // invalid one (e.g. a parentId that would create a cycle) is skipped
+  // while the rest of the patch still applies
+  function updateNode(id, patch) {
     const node = nodes.find(n => n.id === id);
-    if (!node) return;
-    node.name = (newName || '').trim() || node.name;
-    notify();
+    if (!node || !patch) return;
+    let changed = false;
+
+    if ('name' in patch) {
+      node.name = (patch.name || '').trim() || node.name;
+      changed = true;
+    }
+    if ('notes' in patch) {
+      node.notes = typeof patch.notes === 'string' ? patch.notes : '';
+      changed = true;
+    }
+    ['x', 'y'].forEach(key => {
+      if (typeof patch[key] === 'number' && isFinite(patch[key])) {
+        node[key] = patch[key];
+        changed = true;
+      }
+    });
+    if ('parentId' in patch) {
+      const newParentId = patch.parentId || null;
+      // avoid circular references: can't move a node under itself or its
+      // own child, and the new parent has to actually exist
+      const valid = !newParentId || (nodes.some(n => n.id === newParentId) && !isAncestor(id, newParentId));
+      if (valid) {
+        node.parentId = newParentId;
+        changed = true;
+      }
+    }
+
+    if (changed) notify();
+  }
+
+  function renameNode(id, newName) {
+    updateNode(id, { name: newName });
   }
 
   function updateNodeNotes(id, text) {
-    const node = nodes.find(n => n.id === id);
-    if (!node) return;
-    node.notes = typeof text === 'string' ? text : '';
-    notify();
+    updateNode(id, { notes: text });
   }
 
   // deletes a node and all its children (recursively)
@@ -359,23 +402,14 @@ const Store = (() => {
     notify();
   }
 
+  // re-parents a node (with its children); see updateNode for the cycle check
   function moveNode(id, newParentId) {
-    if (id === newParentId) return;
-    const node = nodes.find(n => n.id === id);
-    if (!node) return;
-    // avoid circular references: can't move a node under its own child
-    if (newParentId && isAncestor(id, newParentId)) return;
-    node.parentId = newParentId || null;
-    notify();
+    updateNode(id, { parentId: newParentId });
   }
 
   // updates only the mindmap position, doesn't touch the hierarchy
   function moveNodePosition(id, x, y) {
-    const node = nodes.find(n => n.id === id);
-    if (!node) return;
-    node.x = x;
-    node.y = y;
-    notify();
+    updateNode(id, { x, y });
   }
 
   // --- export / import ---
@@ -455,9 +489,9 @@ const Store = (() => {
 
   return {
     getAll, getById, getChildren, getRoots,
-    addNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
+    addNode, updateNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
     save, load, subscribe, exportJSON, importJSON,
-    listCampaigns, getCurrentCampaignId, getCurrentCampaignName,
+    listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,
     createCampaign, switchCampaign, renameCampaign, deleteCampaign,
     subscribeCampaignChange, subscribeCampaignDeleted
   };
