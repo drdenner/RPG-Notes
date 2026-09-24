@@ -18,7 +18,9 @@
 // there's no way for typed or imported text to inject arbitrary markup.
 
 const NotesEditor = (() => {
-  const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
+  // runs on already-escaped text, so '<' only ever appears as the start of
+  // a tag we added ourselves; raw quotes are excluded as a second safeguard
+  const URL_PATTERN = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
 
   let overlayEl, panelEl, titleInputEl, hintEl, textareaEl, previewLabelEl, previewEl, saveBtn, closeBtn;
   let currentId = null;
@@ -130,14 +132,22 @@ const NotesEditor = (() => {
     currentId = null;
   }
 
+  // escapes quotes too (textContent/innerHTML doesn't), since the result
+  // also ends up inside an href="..." attribute below
   function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   // turns raw text into safe display HTML: escapes everything first, then
-  // re-introduces only **bold** and auto-detected links
+  // re-introduces only **bold** and auto-detected links. Bold runs before
+  // links on purpose: URL_PATTERN stops at '<', so a link can never swallow
+  // (or end up inside) a <b> tag, and after escaping the only quotes left
+  // are entities, so nothing can break out of the href attribute.
   function renderNotes(text) {
     let html = escapeHtml(text || '');
     html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');

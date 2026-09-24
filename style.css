@@ -139,7 +139,8 @@ body {
 .drive-dot-connected { background: #6fae6f; }
 .drive-dot-syncing,
 .drive-dot-connecting { background: var(--accent-gold); }
-.drive-dot-error { background: var(--accent-red-bright); }
+.drive-dot-error,
+.drive-dot-reauth { background: var(--accent-red-bright); }
 
 /* --- view mode: hide everything destructive/editable, keep expand/collapse,
    zoom and panning (which don't change anything) --- */

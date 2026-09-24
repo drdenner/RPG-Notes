@@ -69,6 +69,8 @@ const DriveSync = (() => {
   let syncQueue = Promise.resolve(); // serializes connect/switch/rename operations, see header comment
   let uploadTimer = null;
   let refreshPromise = null;
+  let pendingRefresh = null; // { resolve, reject, timer } while refreshToken() waits on GIS
+  const REFRESH_TIMEOUT_MS = 20000;
   let suppressUpload = false;
   let statusCallback = () => {};
 
@@ -88,6 +90,8 @@ const DriveSync = (() => {
   }
 
   // status: 'unconfigured' | 'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'
+  //       | 'reauth' (the token expired and couldn't be renewed silently - the
+  //         user has to click Connect again)
   function init(onStatusChange) {
     statusCallback = onStatusChange || statusCallback;
     if (!isConfigured()) {
@@ -98,7 +102,10 @@ const DriveSync = (() => {
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
-        callback: onTokenResponse
+        callback: onTokenResponse,
+        // popup blocked/closed etc. - GIS ONLY reports these here, never
+        // via `callback`, so without this a pending refresh would hang
+        error_callback: onTokenError
       });
       setStatus('disconnected');
       // used Drive before on this device (for this campaign)? try a silent reconnect
@@ -130,6 +137,11 @@ const DriveSync = (() => {
   }
 
   function onTokenResponse(resp) {
+    if (pendingRefresh) {
+      if (resp.error) settleRefresh(new Error(resp.error));
+      else { accessToken = resp.access_token; settleRefresh(null); }
+      return;
+    }
     if (resp.error) {
       setStatus(fileId ? 'disconnected' : 'error', resp.error);
       return;
@@ -138,12 +150,27 @@ const DriveSync = (() => {
     queueSync(() => connectCurrentCampaign());
   }
 
+  function onTokenError(err) {
+    const reason = (err && err.type) || 'token request failed';
+    if (pendingRefresh) { settleRefresh(new Error(reason)); return; }
+    // the silent reconnect on page load, or the user closed the Connect popup
+    setStatus(fileId ? 'reauth' : 'disconnected', reason);
+  }
+
+  // true for errors caused by the token not being renewable silently -
+  // the 'reauth' status has already been set, so callers shouldn't
+  // overwrite it with a generic 'error'
+  function isReauthError(err) {
+    return !!(err && err.reauth);
+  }
+
   async function connectCurrentCampaign() {
     try {
       await ensureFile();
       await pull();
       setStatus('connected');
     } catch (err) {
+      if (isReauthError(err)) return;
       // the file no longer exists, e.g. because a different Google account
       // was used -> forget the saved file reference and try a fresh one
       if (String(err.message).includes('404') && fileId) {
@@ -155,6 +182,7 @@ const DriveSync = (() => {
           setStatus('connected');
           return;
         } catch (err2) {
+          if (isReauthError(err2)) return;
           console.error('Drive sync failed', err2);
           setStatus('error', err2.message);
           return;
@@ -165,20 +193,35 @@ const DriveSync = (() => {
     }
   }
 
+  // tries to renew an expired token without user interaction. This often
+  // runs from a timer (the debounced upload), where the browser may block
+  // the popup - so it ALWAYS settles: via callback, error_callback, or the
+  // timeout below. It runs inside syncQueue, so a promise that never
+  // settled would hang every later sync operation forever. On failure it
+  // drops the token and asks the user to reconnect by clicking.
   function refreshToken() {
     if (refreshPromise) return refreshPromise;
     refreshPromise = new Promise((resolve, reject) => {
-      const originalCallback = tokenClient.callback;
-      tokenClient.callback = resp => {
-        tokenClient.callback = originalCallback;
-        refreshPromise = null;
-        if (resp.error) { reject(new Error(resp.error)); return; }
-        accessToken = resp.access_token;
-        resolve();
-      };
+      const timer = setTimeout(() => settleRefresh(new Error('token refresh timed out')), REFRESH_TIMEOUT_MS);
+      pendingRefresh = { resolve, reject, timer };
       tokenClient.requestAccessToken({ prompt: '' });
     });
     return refreshPromise;
+  }
+
+  function settleRefresh(err) {
+    const pending = pendingRefresh;
+    if (!pending) return;
+    pendingRefresh = null;
+    refreshPromise = null;
+    clearTimeout(pending.timer);
+    if (!err) { pending.resolve(); return; }
+    console.warn('Could not renew the Drive token silently', err);
+    accessToken = null;
+    clearTimeout(uploadTimer);
+    setStatus('reauth', err.message);
+    err.reauth = true;
+    pending.reject(err);
   }
 
   async function ensureFile() {
@@ -350,6 +393,7 @@ const DriveSync = (() => {
       });
       setStatus('connected');
     } catch (err) {
+      if (isReauthError(err)) return;
       console.error('Could not save to Drive', err);
       setStatus('error', err.message);
     }

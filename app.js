@@ -153,7 +153,8 @@ document.addEventListener('DOMContentLoaded', () => {
     connecting: 'Drive: connecting…',
     connected: 'Drive: connected',
     syncing: 'Drive: saving…',
-    error: 'Drive: error'
+    error: 'Drive: error',
+    reauth: 'Drive: sign in again'
   };
 
   function updateDriveUI(status, detail) {
