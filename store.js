@@ -47,7 +47,8 @@
 //
 // importJSON() normalizes/repairs incoming nodes defensively (missing
 // fields get sane defaults, a parentId pointing at a non-existent node
-// becomes a root node) rather than trusting the file blindly, since it may
+// becomes a root node, parent cycles are broken, and a duplicated id is
+// replaced with a fresh one) rather than trusting the file blindly, since it may
 // be hand-edited or come from an older/future version of the app. Unknown
 // extra fields on a node are preserved, not stripped, so a future version
 // of this app can add fields without older exports losing them.
@@ -91,24 +92,68 @@ const Store = (() => {
 
   // --- persistence ---
 
+  let storageErrorShown = false;
+
+  function isQuotaError(e) {
+    return !!e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014);
+  }
+
+  // localStorage.setItem that shows an error instead of throwing (e.g. when
+  // storage is full) - a failed save must never crash a Store mutation.
+  // The in-memory data (and Drive sync) keep working either way.
+  function trySetItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (e) {
+      console.error('Could not save to localStorage', e);
+      if (!storageErrorShown) {
+        storageErrorShown = true; // don't repeat the alert on every single change
+        alert(isQuotaError(e)
+          ? 'This browser\'s storage for RPG Notes is full, so your latest changes are NOT saved on this device.\n\nExport your campaign now (or delete campaigns you no longer need) to avoid losing work.'
+          : 'Could not save your notes on this device: ' + e.message);
+      }
+      return false;
+    }
+  }
+
   function save() {
-    localStorage.setItem(dataKey(currentCampaignId), JSON.stringify(nodes));
+    if (trySetItem(dataKey(currentCampaignId), JSON.stringify(nodes))) storageErrorShown = false;
     saveCampaignRegistry();
   }
 
   function saveCampaignRegistry() {
-    localStorage.setItem(CAMPAIGNS_KEY, JSON.stringify(campaigns));
-    localStorage.setItem(CURRENT_CAMPAIGN_KEY, currentCampaignId);
+    trySetItem(CAMPAIGNS_KEY, JSON.stringify(campaigns));
+    trySetItem(CURRENT_CAMPAIGN_KEY, currentCampaignId);
   }
 
   function loadCampaignNodes(campaignId) {
     const raw = localStorage.getItem(dataKey(campaignId));
     if (!raw) return [];
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('saved data is not a list of nodes');
+      return parsed;
     } catch (e) {
       console.error('Could not read saved notes for this campaign, starting fresh.', e);
+      preserveCorruptData(campaignId, raw);
       return [];
+    }
+  }
+
+  // moves unreadable saved data to its own key before the campaign starts
+  // over empty, so the next save() can't overwrite it. Removing the
+  // original first frees its space, so the copy fits even when storage is
+  // nearly full; if the copy still fails, the original is put back.
+  function preserveCorruptData(campaignId, raw) {
+    const backupKey = `rpg-notes-corrupt-${campaignId}-${Date.now()}`;
+    localStorage.removeItem(dataKey(campaignId));
+    try {
+      localStorage.setItem(backupKey, raw);
+      alert(`The saved notes for this campaign could not be read, so it starts out empty.\n\nThe unreadable data was kept in this browser's localStorage under the key "${backupKey}".`);
+    } catch (e) {
+      try { localStorage.setItem(dataKey(campaignId), raw); } catch (e2) { /* nothing more we can do */ }
+      alert('The saved notes for this campaign could not be read, and there wasn\'t room to keep a copy. The campaign starts out empty - the unreadable data will be overwritten by your next change.');
     }
   }
 
@@ -335,12 +380,17 @@ const Store = (() => {
 
   // --- export / import ---
 
-  function exportJSON() {
+  // exports the given campaign (defaults to the current one). Any other
+  // campaign is read from its saved copy in localStorage, which save()
+  // keeps up to date on every change - drive-sync.js needs this to flush a
+  // pending upload for a campaign the user has already switched away from
+  function exportJSON(campaignId) {
+    const exportNodes = !campaignId || campaignId === currentCampaignId ? nodes : loadCampaignNodes(campaignId);
     return JSON.stringify({
       schemaVersion: SCHEMA_VERSION,
       app: 'rpg-notes',
       exportedAt: new Date().toISOString(),
-      nodes
+      nodes: exportNodes
     }, null, 2);
   }
 
@@ -351,34 +401,53 @@ const Store = (() => {
       throw new Error('Invalid format: expected an export file with a "nodes" array.');
     }
 
-    const validIds = new Set(incoming.map(n => n && n.id).filter(Boolean));
-    nodes = incoming.map(n => {
+    incoming.forEach(n => {
       if (!n || typeof n.id !== 'string' || !n.id) {
         throw new Error('Invalid format: every node needs a non-empty string "id".');
       }
+    });
+
+    // duplicate ids would make parent/child links ambiguous: the first node
+    // keeps the id (so children pointing at it stay attached), later
+    // duplicates get a fresh id instead of being dropped
+    const usedIds = new Set();
+    const ids = incoming.map(n => {
+      const id = usedIds.has(n.id) ? generateId() : n.id;
+      usedIds.add(id);
+      return id;
+    });
+
+    const validIds = new Set(ids);
+    const imported = incoming.map((n, i) => {
       return {
         ...n, // preserve any fields a newer/older version of the app added
+        id: ids[i],
         name: typeof n.name === 'string' && n.name ? n.name : 'Unnamed node',
         notes: typeof n.notes === 'string' ? n.notes : '',
-        parentId: typeof n.parentId === 'string' && validIds.has(n.parentId) && n.parentId !== n.id ? n.parentId : null,
+        parentId: typeof n.parentId === 'string' && validIds.has(n.parentId) && n.parentId !== ids[i] ? n.parentId : null,
         x: typeof n.x === 'number' && isFinite(n.x) ? n.x : 0,
         y: typeof n.y === 'number' && isFinite(n.y) ? n.y : 0
       };
     });
 
     // break any longer cycles a corrupted/hand-edited file might contain
-    // (A -> B -> A), so traversal can never loop forever
-    const byId = new Map(nodes.map(n => [n.id, n]));
-    nodes.forEach(n => {
-      const seen = new Set();
+    // (A -> B -> A), so traversal can never loop forever. The link is cut
+    // where the cycle closes (the node whose parent we've already visited),
+    // not at the node the walk started from - otherwise a node merely
+    // hanging off a cycle (C -> A, with A <-> B) would become a root while
+    // the cycle itself stayed intact
+    const byId = new Map(imported.map(n => [n.id, n]));
+    imported.forEach(n => {
+      const seen = new Set([n.id]);
       let current = n;
       while (current.parentId) {
-        if (seen.has(current.parentId)) { n.parentId = null; break; }
+        if (seen.has(current.parentId)) { current.parentId = null; break; }
         seen.add(current.parentId);
         current = byId.get(current.parentId);
       }
     });
 
+    nodes = imported;
     notify();
   }
 

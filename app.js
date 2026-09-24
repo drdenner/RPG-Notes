@@ -127,6 +127,13 @@ document.addEventListener('DOMContentLoaded', () => {
   importInput.addEventListener('change', () => {
     const file = importInput.files[0];
     if (!file) return;
+    const ok = confirm(
+      `Import "${file.name}"?\n\n` +
+      `This REPLACES all nodes in the current campaign "${Store.getCurrentCampaignName()}". ` +
+      'If Google Drive is connected, the change is synced there too.\n\n' +
+      'Tip: Export first if you want to keep a copy of the current campaign.'
+    );
+    if (!ok) { importInput.value = ''; return; }
     const reader = new FileReader();
     reader.onload = () => {
       try {
