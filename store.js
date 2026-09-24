@@ -7,8 +7,8 @@
 // whichever campaign is currently active.
 //
 // ============================================================================
-// DATA FORMAT (this is the contract - keep it stable, it's what Export,
-// Import and Google Drive sync all read and write; a rewrite of the app
+// DATA FORMAT (this is the contract - keep it stable, it's what the
+// Google Drive files are stored as; a rewrite of the app
 // should be able to load old data just by honoring this shape)
 // ============================================================================
 //
@@ -128,7 +128,7 @@ const Store = (() => {
       if (!storageErrorShown) {
         storageErrorShown = true; // don't repeat the alert on every single change
         alert(isQuotaError(e)
-          ? 'This browser\'s storage for RPG Notes is full, so your latest changes are NOT saved on this device.\n\nExport your campaign now (or delete campaigns you no longer need) to avoid losing work.'
+          ? 'This browser\'s storage for RPG Notes is full, so your latest changes are NOT saved on this device.\n\nIf Google Drive is connected, your changes are still saved there. Otherwise, delete campaigns you no longer need to free up space.'
           : 'Could not save your notes on this device: ' + e.message);
       }
       return false;

@@ -2,7 +2,7 @@
 // Glues the views together with the Store: initializes both views, keeps
 // whichever one is currently visible in sync with data changes (the other
 // just gets caught up when you switch to it, see renderAll/showView),
-// drives tab switching, edit/view mode, and JSON export/import.
+// drives tab switching, edit/view mode, and the Google Drive buttons.
 
 document.addEventListener('DOMContentLoaded', () => {
   const treeContainer = document.getElementById('tree-view');
@@ -108,46 +108,6 @@ document.addEventListener('DOMContentLoaded', () => {
   AppMode.subscribe(updateModeUI);
   updateModeUI(AppMode.isEditMode());
 
-  // --- export to a JSON file ---
-  document.getElementById('export-btn').addEventListener('click', () => {
-    const json = Store.exportJSON();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const safeName = Store.getCurrentCampaignName().replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'campaign';
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `rpg-notes-${safeName}.json`;
-    a.click();
-    // revoking right away can cancel the download in some browsers - give
-    // it a moment to start first
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  });
-
-  // --- import from a JSON file ---
-  const importInput = document.getElementById('import-input');
-  document.getElementById('import-btn').addEventListener('click', () => importInput.click());
-  importInput.addEventListener('change', () => {
-    const file = importInput.files[0];
-    if (!file) return;
-    const ok = confirm(
-      `Import "${file.name}"?\n\n` +
-      `This REPLACES all nodes in the current campaign "${Store.getCurrentCampaignName()}". ` +
-      'If Google Drive is connected, the change is synced there too.\n\n' +
-      'Tip: Export first if you want to keep a copy of the current campaign.'
-    );
-    if (!ok) { importInput.value = ''; return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        Store.importJSON(reader.result);
-      } catch (e) {
-        alert('Could not import the file: ' + e.message);
-      }
-      importInput.value = '';
-    };
-    reader.readAsText(file);
-  });
-
   // --- Google Drive sync (optional, see setup guide in README.md) ---
   const driveDot = document.getElementById('drive-dot');
   const driveStatusText = document.getElementById('drive-status-text');
@@ -210,8 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ok = confirm(
       'Pull everything from Google Drive?\n\n' +
       'This DELETES ALL campaigns on this device and replaces them with the ones in the RPG Notes folder on Drive. ' +
-      'Local changes that haven\'t reached Drive are lost.\n\n' +
-      'Tip: Export first if you want to keep a copy.'
+      'Local changes that haven\'t reached Drive are lost.'
     );
     if (!ok) return;
     drivePullBtn.disabled = true;

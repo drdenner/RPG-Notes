@@ -11,7 +11,6 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 - Move a node to a new parent by dragging its ⠿ grip in the List view; in the
   Mindmap, dragging a node only changes its position
 - Everything is saved locally in the browser (`localStorage`)
-- Export / Import of a campaign as a JSON file
 - Optional sync via Google Drive, to use the same notes on several devices
 
 It's plain HTML, CSS and vanilla JavaScript: no build step, no dependencies
@@ -85,8 +84,8 @@ files it created itself, never the rest of your Drive.
 
 ## Data format
 
-Export files and the synced Drive files share one format. **It's a contract**:
-keep it stable, so old exports and Drive files can always be loaded. The
+The Drive files use this format. **It's a contract**: keep it stable, so old
+Drive files can always be loaded. The
 authoritative description is at the top of `store.js`.
 
 ```json
@@ -117,7 +116,7 @@ authoritative description is at the top of `store.js`.
 - `notes` is plain text, never HTML. `**bold**` and URLs are only formatted
   when displayed.
 - `x`/`y` are the node's position in the mindmap.
-- Import repairs rather than rejects: missing fields get defaults, a
+- Loading a file repairs rather than rejects: missing fields get defaults, a
   `parentId` pointing at a missing node makes it a root, parent cycles are
   broken, duplicated ids get a fresh id. Unknown extra fields on a node are
   preserved.

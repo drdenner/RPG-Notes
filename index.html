@@ -12,7 +12,7 @@
   a stale cached copy. Hard refresh (Ctrl+Shift+R) still works too, but this
   means regular visits pick up updates without needing one.
 -->
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -39,9 +39,6 @@
       <button id="drive-backup-btn" class="btn" hidden title="Save a snapshot to a separate Drive file that only changes when you click this">Backup</button>
       <button id="drive-pull-btn" class="btn" hidden title="Replace ALL campaigns on this device with the ones on Google Drive">Pull from Drive</button>
       <button id="drive-disconnect-btn" class="btn" hidden>Disconnect Drive</button>
-      <button id="export-btn" class="btn">Export</button>
-      <button id="import-btn" class="btn">Import</button>
-      <input type="file" id="import-input" accept="application/json" hidden>
     </div>
   </header>
 
@@ -63,12 +60,12 @@
     </section>
   </main>
 
-  <script src="store.js?v=10"></script>
+  <script src="store.js?v=11"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=5"></script>
   <script src="drive-sync.js?v=18"></script>
   <script src="tree-view.js?v=2"></script>
   <script src="mindmap-view.js?v=4"></script>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
