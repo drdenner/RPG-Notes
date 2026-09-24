@@ -8,6 +8,8 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 - Multiple independent campaigns, one active at a time
 - Edit mode / view mode (view mode locks everything, for use during a session)
 - Works with mouse, pen and touch, so it's usable on a tablet
+- Move a node to a new parent by dragging its ⠿ grip in the List view; in the
+  Mindmap, dragging a node only changes its position
 - Everything is saved locally in the browser (`localStorage`)
 - Export / Import of a campaign as a JSON file
 - Optional sync via Google Drive, to use the same notes on several devices
@@ -58,6 +60,8 @@ files it created itself, never the rest of your Drive.
   the button.
 - Renaming a campaign renames its Drive files. Deleting a campaign moves its
   Drive files to Drive's trash.
+- Campaign names must map to different file names, so creating "A:B" when
+  "A/B" exists gives "A:B (2)". Both would otherwise become `A-B.json`.
 - The list of campaigns is stored per browser. To open a campaign on a new
   device, connect Drive there and create a campaign with **exactly the same
   name**. Its contents are then fetched from Drive.
