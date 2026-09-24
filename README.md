@@ -64,7 +64,11 @@ files it created itself, never the rest of your Drive.
   "A/B" exists gives "A:B (2)". Both would otherwise become `A-B.json`.
 - The list of campaigns is stored per browser. To open a campaign on a new
   device, connect Drive there and create a campaign with **exactly the same
-  name**. Its contents are then fetched from Drive.
+  name**. Its contents are then fetched from Drive. Or use **Pull from Drive**.
+- **Pull from Drive** (after asking for OK) deletes **all** campaigns on this
+  device and replaces them with every `<name>.json` in the RPG Notes folder.
+  Backup and old `-conflict-` files are ignored, and unreadable files are
+  skipped and listed. If no file can be read, nothing is changed.
 - **Newest wins:** every change stamps the campaign with `updatedAt`, which
   is saved in the JSON file too. When connecting (or switching campaign),
   the app compares the local `updatedAt` with the Drive file's, and the newer

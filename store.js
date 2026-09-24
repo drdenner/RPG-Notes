@@ -452,6 +452,17 @@ const Store = (() => {
   // instead of stamping the import as a new local change
   function importJSON(jsonString, { keepUpdatedAt = false } = {}) {
     const parsed = JSON.parse(jsonString);
+    nodes = normalizeNodes(parsed);
+    notify(keepUpdatedAt ? readUpdatedAt(parsed) : undefined);
+  }
+
+  function readUpdatedAt(parsed) {
+    return parsed && typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null;
+  }
+
+  // validates and repairs an export file's nodes (see the header comment);
+  // throws if the file isn't in the expected shape at all
+  function normalizeNodes(parsed) {
     const incoming = parsed && typeof parsed === 'object' ? parsed.nodes : undefined;
     if (!Array.isArray(incoming)) {
       throw new Error('Invalid format: expected an export file with a "nodes" array.');
@@ -503,8 +514,44 @@ const Store = (() => {
       }
     });
 
-    nodes = imported;
-    notify(keepUpdatedAt ? (typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null) : undefined);
+    return imported;
+  }
+
+  // throws away EVERY local campaign and replaces them with `entries`
+  // ([{ name, data }], data = a parsed export file) - used by Drive sync's
+  // "Pull from Drive". Every entry is validated before anything is
+  // deleted; unreadable ones are skipped and returned by name, and if none
+  // are readable nothing changes. Deliberately does NOT fire the
+  // campaign-deleted listeners, since those trash the Drive files.
+  // Stays on a campaign with the same name as the current one, if any.
+  function replaceAllCampaigns(entries) {
+    const incoming = [];
+    const skipped = [];
+    entries.forEach(e => {
+      try {
+        incoming.push({ id: generateId(), name: e.name, nodes: normalizeNodes(e.data), updatedAt: readUpdatedAt(e.data) });
+      } catch (err) {
+        skipped.push(e.name);
+      }
+    });
+    if (incoming.length === 0) throw new Error('No readable campaigns were found.');
+
+    const previousName = getCurrentCampaignName();
+    campaigns.forEach(c => {
+      localStorage.removeItem(dataKey(c.id));
+      localStorage.removeItem(updatedAtKey(c.id));
+    });
+    campaigns = incoming.map(c => ({ id: c.id, name: c.name }));
+    incoming.forEach(c => {
+      trySetItem(dataKey(c.id), JSON.stringify(c.nodes));
+      if (c.updatedAt) trySetItem(updatedAtKey(c.id), c.updatedAt);
+    });
+    const current = incoming.find(c => c.name === previousName) || incoming[0];
+    currentCampaignId = current.id;
+    nodes = current.nodes;
+    saveCampaignRegistry();
+    notifyCampaignChanged();
+    return { campaigns: listCampaigns(), skipped };
   }
 
   load();
@@ -514,7 +561,7 @@ const Store = (() => {
     addNode, updateNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
     save, load, subscribe, exportJSON, importJSON, getUpdatedAt,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,
-    createCampaign, switchCampaign, renameCampaign, deleteCampaign,
+    createCampaign, switchCampaign, renameCampaign, deleteCampaign, replaceAllCampaigns,
     subscribeCampaignChange, subscribeCampaignDeleted
   };
 })();

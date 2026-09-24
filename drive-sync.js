@@ -508,6 +508,70 @@ const DriveSync = (() => {
     });
   }
 
+  // "Pull from Drive": replaces ALL local campaigns with the ones in the
+  // Drive folder (the caller confirms with the user first). A pending
+  // upload is dropped - the point is that Drive wins. Resolves with
+  // { campaigns, skipped } from Store.replaceAllCampaigns.
+  function pullAllFromDrive() {
+    if (!accessToken) return Promise.reject(new Error('Not connected to Drive.'));
+    clearTimeout(uploadTimer); uploadTimer = null;
+    return queueSync(() => doPullAll());
+  }
+
+  async function doPullAll() {
+    setStatus('syncing');
+    try {
+      const files = await listFolderFiles(await ensureFolder());
+      const idsByName = new Map(files.map(f => [f.name, f.id]));
+      const entries = [];
+      for (const f of files) {
+        // main campaign files only - not Backup snapshots, old conflict
+        // copies, or a second file with a name we've already taken
+        if (!f.name.endsWith('.json') || f.name.endsWith('-backup.json') || f.name.includes('-conflict-')) continue;
+        const name = f.name.slice(0, -'.json'.length);
+        if (entries.some(e => e.name === name)) continue;
+        const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`);
+        let data = null;
+        try { data = JSON.parse(await res.text()); } catch (err) { /* reported as skipped by Store */ }
+        entries.push({ name, data, fileId: f.id });
+      }
+
+      const result = Store.replaceAllCampaigns(entries);
+
+      // forget every old campaign's Drive state, then point each new
+      // campaign at the file it came from (and its backup file, if any).
+      // The campaign switch Store just queued picks these up.
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('rpg-notes-drive-') && k !== FOLDER_ID_KEY && k !== DISCONNECTED_KEY)
+        .forEach(k => localStorage.removeItem(k));
+      result.campaigns.forEach(c => {
+        localStorage.setItem(fileIdKeyFor(c.id), entries.find(e => e.name === c.name).fileId);
+        const backupId = idsByName.get(`${c.name}-backup.json`);
+        if (backupId) localStorage.setItem(backupFileIdKeyFor(c.id), backupId);
+      });
+
+      setStatus('connected');
+      return result;
+    } catch (err) {
+      if (!isReauthError(err)) setStatus('error', err.message);
+      throw err;
+    }
+  }
+
+  async function listFolderFiles(inFolderId) {
+    const q = encodeURIComponent(`${queryString(inFolderId)} in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`);
+    const files = [];
+    let pageToken = '';
+    do {
+      const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&pageSize=1000&orderBy=name&fields=nextPageToken,files(id,name)` +
+        (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''));
+      const data = await res.json();
+      files.push(...(data.files || []));
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+    return files;
+  }
+
   async function driveFetch(url, options = {}, retried = false) {
     options.headers = Object.assign({ Authorization: `Bearer ${accessToken}` }, options.headers);
     const res = await fetch(url, options);
@@ -609,5 +673,5 @@ const DriveSync = (() => {
     });
   }
 
-  return { init, connect, disconnect, syncNow, backupNow, isConfigured };
+  return { init, connect, disconnect, syncNow, backupNow, pullAllFromDrive, isConfigured };
 })();

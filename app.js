@@ -154,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const driveConnectBtn = document.getElementById('drive-connect-btn');
   const driveSyncBtn = document.getElementById('drive-sync-btn');
   const driveBackupBtn = document.getElementById('drive-backup-btn');
+  const drivePullBtn = document.getElementById('drive-pull-btn');
   const driveDisconnectBtn = document.getElementById('drive-disconnect-btn');
 
   const DRIVE_LABELS = {
@@ -175,6 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
     driveConnectBtn.hidden = isConnectedish || status === 'connecting';
     driveSyncBtn.hidden = !isConnectedish;
     driveBackupBtn.hidden = !isConnectedish;
+    drivePullBtn.hidden = !isConnectedish;
     driveDisconnectBtn.hidden = !isConnectedish;
   }
 
@@ -202,6 +204,27 @@ document.addEventListener('DOMContentLoaded', () => {
       driveBackupBtn.textContent = original;
       driveBackupBtn.disabled = false;
     }, 1500);
+  });
+
+  drivePullBtn.addEventListener('click', async () => {
+    const ok = confirm(
+      'Pull everything from Google Drive?\n\n' +
+      'This DELETES ALL campaigns on this device and replaces them with the ones in the RPG Notes folder on Drive. ' +
+      'Local changes that haven\'t reached Drive are lost.\n\n' +
+      'Tip: Export first if you want to keep a copy.'
+    );
+    if (!ok) return;
+    drivePullBtn.disabled = true;
+    try {
+      const { campaigns, skipped } = await DriveSync.pullAllFromDrive();
+      let msg = `Pulled ${campaigns.length} campaign(s) from Google Drive.`;
+      if (skipped.length) msg += `\n\nThese files couldn't be read and were skipped:\n${skipped.join('\n')}`;
+      alert(msg);
+    } catch (err) {
+      console.error('Pull from Drive failed', err);
+      alert('Could not pull from Google Drive: ' + err.message + '\n\nNothing on this device was changed.');
+    }
+    drivePullBtn.disabled = false;
   });
 
   DriveSync.init(updateDriveUI);
