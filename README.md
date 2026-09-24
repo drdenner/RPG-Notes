@@ -65,13 +65,13 @@ files it created itself, never the rest of your Drive.
 - The list of campaigns is stored per browser. To open a campaign on a new
   device, connect Drive there and create a campaign with **exactly the same
   name**. Its contents are then fetched from Drive.
-- **Conflicts:** when connecting, the app checks whether the campaign changed
-  locally, on Drive, or both, since the last sync. It pulls or pushes
-  accordingly. If both changed, it asks which version to keep and first saves
-  the other one as `<name>-conflict-drive-<time>.json` or
-  `<name>-conflict-local-<time>.json` in the same folder. Once connected,
+- **Newest wins:** every change stamps the campaign with `updatedAt`, which
+  is saved in the JSON file too. When connecting (or switching campaign),
+  the app compares the local `updatedAt` with the Drive file's, and the newer
+  one overwrites the other. If neither has one, Drive wins. Once connected,
   edits are pushed without re-checking Drive, so avoid editing the same
-  campaign on two devices at the same time.
+  campaign on two devices at the same time. Timestamps come from each
+  device's own clock, so keep device clocks roughly right.
 - If the Drive file can't be read, it's left untouched and syncing that
   campaign is paused until the next connect.
 - If the sign-in expires and can't be renewed silently, the status shows
@@ -90,6 +90,7 @@ authoritative description is at the top of `store.js`.
   "schemaVersion": 1,
   "app": "rpg-notes",
   "exportedAt": "2026-01-01T12:00:00.000Z",
+  "updatedAt": "2026-01-01T11:58:00.000Z",
   "nodes": [
     {
       "id": "string, unique, required",
@@ -104,6 +105,9 @@ authoritative description is at the top of `store.js`.
 ```
 
 - A file always contains **one** campaign's nodes.
+- `updatedAt` is when the campaign last changed (`null` if never). Drive sync
+  uses it to decide which copy is newest. Older files without it count as
+  oldest.
 - The envelope with a `nodes` array is required. A bare array isn't accepted.
 - Children are never stored on a node. They're derived from `parentId`.
 - `notes` is plain text, never HTML. `**bold**` and URLs are only formatted
@@ -121,6 +125,7 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-campaigns` | List of campaigns: `[{ id, name }]` |
 | `rpg-notes-current-campaign` | Id of the active campaign |
 | `rpg-notes-data-<campaignId>` | That campaign's `nodes` array |
+| `rpg-notes-updated-<campaignId>` | When that campaign last changed (ISO timestamp) |
 | `rpg-notes-corrupt-<campaignId>-<timestamp>` | Saved data that couldn't be read, kept aside before the campaign started over |
 | `rpg-notes-edit-mode` | `"true"` / `"false"` |
-| `rpg-notes-drive-*` | Drive sync state: folder/file ids, the dirty flag, last synced modifiedTime, whether you disconnected |
+| `rpg-notes-drive-*` | Drive sync state: folder/file ids, whether you disconnected |

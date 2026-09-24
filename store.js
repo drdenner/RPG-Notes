@@ -19,8 +19,13 @@
 //     "schemaVersion": 1,
 //     "app": "rpg-notes",
 //     "exportedAt": "2026-01-01T12:00:00.000Z",
+//     "updatedAt": "2026-01-01T11:58:00.000Z",
 //     "nodes": [ <node>, <node>, ... ]
 //   }
+//
+// "updatedAt" is when the campaign's data last changed (null if never,
+// e.g. a freshly seeded or created campaign). Google Drive sync compares
+// it between this device and Drive, and the newer one wins.
 //
 // It only ever contains ONE campaign's nodes (the currently active one) -
 // campaigns are never mixed together in a single export file.
@@ -73,13 +78,26 @@ const Store = (() => {
     return 'rpg-notes-data-' + campaignId;
   }
 
+  function updatedAtKey(campaignId) {
+    return 'rpg-notes-updated-' + campaignId;
+  }
+
+  // when the campaign's data last changed (ISO string), or null if never
+  function getUpdatedAt(campaignId = currentCampaignId) {
+    return localStorage.getItem(updatedAtKey(campaignId)) || null;
+  }
+
   function generateId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   }
 
-  // saves and notifies every subscriber (views, Drive sync) that data changed
-  function notify() {
+  // stamps the campaign as changed, saves, and notifies every subscriber
+  // (views, Drive sync). importJSON passes the Drive file's own updatedAt
+  // when pulling, so a pull doesn't make the local copy look newer.
+  function notify(updatedAt = new Date().toISOString()) {
+    if (updatedAt) trySetItem(updatedAtKey(currentCampaignId), updatedAt);
+    else localStorage.removeItem(updatedAtKey(currentCampaignId));
     save();
     dataListeners.forEach(fn => fn());
   }
@@ -281,6 +299,7 @@ const Store = (() => {
 
     campaigns.splice(idx, 1);
     localStorage.removeItem(dataKey(id));
+    localStorage.removeItem(updatedAtKey(id));
 
     if (currentCampaignId === id) {
       currentCampaignId = campaigns[0].id;
@@ -424,11 +443,14 @@ const Store = (() => {
       schemaVersion: SCHEMA_VERSION,
       app: 'rpg-notes',
       exportedAt: new Date().toISOString(),
+      updatedAt: getUpdatedAt(campaignId || currentCampaignId),
       nodes: exportNodes
     }, null, 2);
   }
 
-  function importJSON(jsonString) {
+  // `keepUpdatedAt` (used by Drive sync) keeps the file's updatedAt
+  // instead of stamping the import as a new local change
+  function importJSON(jsonString, { keepUpdatedAt = false } = {}) {
     const parsed = JSON.parse(jsonString);
     const incoming = parsed && typeof parsed === 'object' ? parsed.nodes : undefined;
     if (!Array.isArray(incoming)) {
@@ -482,7 +504,7 @@ const Store = (() => {
     });
 
     nodes = imported;
-    notify();
+    notify(keepUpdatedAt ? (typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null) : undefined);
   }
 
   load();
@@ -490,7 +512,7 @@ const Store = (() => {
   return {
     getAll, getById, getChildren, getRoots,
     addNode, updateNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
-    save, load, subscribe, exportJSON, importJSON,
+    save, load, subscribe, exportJSON, importJSON, getUpdatedAt,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,
     createCampaign, switchCampaign, renameCampaign, deleteCampaign,
     subscribeCampaignChange, subscribeCampaignDeleted

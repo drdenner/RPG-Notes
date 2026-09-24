@@ -28,13 +28,11 @@
 // explicitly via Store.exportJSON(syncedCampaignId) - never just whatever
 // Store happens to have loaded right now.
 //
-// Conflict detection: per campaign, localStorage keeps a "dirty" flag (set
-// on every local change, cleared once a push succeeds) and the Drive
-// file's modifiedTime as of the last successful sync. On connect,
-// syncOnConnect() uses those to decide: pull if only Drive changed, push
-// if only this device changed, and ask the user if both did (saving the
-// version they didn't pick as a "-conflict-" copy on Drive first). Once
-// connected, edits are pushed automatically without re-checking Drive.
+// Newest wins: every campaign carries an "updatedAt" timestamp (set by
+// Store on every change, and written into the JSON file). On connect,
+// syncOnConnect() compares the local one with the Drive file's: whichever
+// is newer overwrites the other. Once connected, edits are pushed
+// automatically without re-checking Drive.
 //
 // ONE-TIME SETUP: see "Google Drive sync" in README.md for how to get a
 // Google OAuth Client ID - it goes into CLIENT_ID below.
@@ -59,9 +57,6 @@ const DriveSync = (() => {
   function backupFileNameFor(campaignName) { return `${sanitizeFileName(campaignName)}-backup.json`; }
   function fileIdKeyFor(campaignId) { return 'rpg-notes-drive-file-id-' + campaignId; }
   function backupFileIdKeyFor(campaignId) { return 'rpg-notes-drive-backup-file-id-' + campaignId; }
-  // conflict detection state, per campaign (see header comment)
-  function dirtyKeyFor(campaignId) { return 'rpg-notes-drive-dirty-' + campaignId; }
-  function syncedTimeKeyFor(campaignId) { return 'rpg-notes-drive-modified-' + campaignId; }
 
   let tokenClient = null;
   let accessToken = null;
@@ -77,7 +72,6 @@ const DriveSync = (() => {
   let pendingRefresh = null; // { resolve, reject, timer } while refreshToken() waits on GIS
   const REFRESH_TIMEOUT_MS = 20000;
   let suppressUpload = false;
-  let editSeq = 0; // bumped on every local change, see recordSynced()
   let statusCallback = () => {};
 
   function isConfigured() {
@@ -207,66 +201,31 @@ const DriveSync = (() => {
     }
   }
 
-  // decides which way to sync on connect, instead of always letting the
-  // Drive file overwrite local data (see "Conflict detection" in the header):
-  //   - no local changes since the last sync -> pull (nothing local to lose)
-  //   - only local changes                     -> push
-  //   - both changed                           -> ask, back up the loser
+  // newest wins (see header comment). ISO timestamps compare correctly as
+  // strings; a missing one counts as oldest. If neither side has one (e.g.
+  // a fresh campaign on a new device), Drive wins.
   async function syncOnConnect() {
-    const campaignId = syncedCampaignId;
-    const seq = editSeq;
-    const created = await ensureFile();
-    const remoteTime = await getRemoteModifiedTime(fileId);
-    if (created) {
-      // the new file was created from local data - they're already equal
-      recordSynced(campaignId, remoteTime, seq);
-      return;
+    if (await ensureFile()) return; // just created from local data - already equal
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    const text = await res.text();
+    if (!text.trim()) { await uploadCurrent(); return; }
+    const remoteTime = readUpdatedAt(text);
+    const localTime = Store.getUpdatedAt(syncedCampaignId) || '';
+    // an unreadable Drive file is never overwritten - importRemote reports
+    // it and pauses syncing instead
+    if (remoteTime === null) importRemote(text);
+    else if (localTime > remoteTime) await uploadCurrent();
+    else if (remoteTime > localTime || !localTime) importRemote(text);
+  }
+
+  // the file's updatedAt, '' if it has none, or null if it isn't valid JSON
+  function readUpdatedAt(text) {
+    try {
+      const t = JSON.parse(text).updatedAt;
+      return typeof t === 'string' ? t : '';
+    } catch (err) {
+      return null;
     }
-    const localChanged = isDirty(campaignId);
-    const remoteChanged = remoteTime !== localStorage.getItem(syncedTimeKeyFor(campaignId));
-    if (!localChanged) await pull(remoteTime);
-    else if (!remoteChanged) await uploadCurrent();
-    else await resolveConflict(remoteTime);
-  }
-
-  async function resolveConflict(remoteTime) {
-    const baseName = sanitizeFileName(syncedCampaignName);
-    const keepLocal = confirm(
-      `"${syncedCampaignName}" was changed both on this device and on Google Drive since they were last synced.\n\n` +
-      'OK = keep THIS DEVICE\'s version\n' +
-      'Cancel = keep the GOOGLE DRIVE version\n\n' +
-      'Either way, the other version is saved as a separate copy in the RPG Notes folder on Drive.'
-    );
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const folder = await ensureFolder();
-    // the backup copy is written BEFORE anything gets overwritten, so a
-    // failure here aborts without losing either version
-    if (keepLocal) {
-      const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
-      await createFileByName(`${baseName}-conflict-drive-${stamp}.json`, folder, await res.text());
-      await uploadCurrent();
-    } else {
-      await createFileByName(`${baseName}-conflict-local-${stamp}.json`, folder, Store.exportJSON(syncedCampaignId));
-      await pull(remoteTime);
-    }
-  }
-
-  async function getRemoteModifiedTime(id) {
-    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=modifiedTime`);
-    const data = await res.json();
-    return data.modifiedTime || null;
-  }
-
-  function isDirty(campaignId) {
-    return localStorage.getItem(dirtyKeyFor(campaignId)) === '1';
-  }
-
-  // called after local and remote are known to be equal. `seq` is editSeq
-  // from before the sync started - if the user edited in the meantime, the
-  // dirty flag stays so that edit still counts as unsynced
-  function recordSynced(campaignId, remoteTime, seq) {
-    if (remoteTime) localStorage.setItem(syncedTimeKeyFor(campaignId), remoteTime);
-    if (editSeq === seq) localStorage.removeItem(dirtyKeyFor(campaignId));
   }
 
   // tries to renew an expired token without user interaction. This often
@@ -436,16 +395,8 @@ const DriveSync = (() => {
     return data.id;
   }
 
-  // replaces the local data with the Drive file. `remoteTime` is the file's
-  // modifiedTime, read BEFORE downloading it - if it changes in between,
-  // the next connect just sees it as changed again and pulls once more
-  async function pull(remoteTime) {
-    if (!fileId) return;
-    const campaignId = syncedCampaignId;
-    const seq = editSeq;
-    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
-    const text = await res.text();
-    if (!text.trim()) return;
+  // replaces the local data with the Drive file's contents
+  function importRemote(text) {
     // Store already moved on to another campaign - importing now would put
     // this file's data into the wrong campaign. The switch that caused this
     // is queued right behind us and will connect the right file.
@@ -453,7 +404,7 @@ const DriveSync = (() => {
 
     suppressUpload = true;
     try {
-      Store.importJSON(text);
+      Store.importJSON(text, { keepUpdatedAt: true });
     } catch (err) {
       // the remote file is in a shape Store can't read (corrupted, hand-
       // edited, from a newer version...). It may still hold data worth
@@ -461,29 +412,22 @@ const DriveSync = (() => {
       // leave the file alone, and pause syncing this campaign (forgetting
       // fileId in memory only, so nothing can upload over it this session;
       // the next connect tries again)
-      suppressUpload = false;
       fileId = null;
       clearTimeout(uploadTimer); uploadTimer = null;
       const msg = `Could not read "${syncedCampaignName}" from Google Drive (${err.message}). ` +
         'The Drive file was left untouched and syncing is paused for this campaign. Your local notes are unchanged.';
       alert(msg);
       throw new Error(msg);
+    } finally {
+      suppressUpload = false;
     }
-    suppressUpload = false;
-    recordSynced(campaignId, remoteTime, seq);
   }
 
-  // every local change marks the campaign as having unsynced changes (kept
-  // in localStorage, so it survives a reload while offline or while the
-  // token was expired), then schedules the upload
+  // Store has already stamped the change with a new updatedAt, so even if
+  // this upload never happens (offline, token expired), the next connect
+  // sees the local copy as newer and pushes it
   function onLocalChange() {
-    if (suppressUpload) return; // the change came from pull() itself
-    editSeq++;
-    try {
-      localStorage.setItem(dirtyKeyFor(Store.getCurrentCampaignId()), '1');
-    } catch (err) {
-      console.error('Could not mark the campaign as changed', err);
-    }
+    if (suppressUpload) return; // the change came from importRemote() itself
     scheduleUpload();
   }
 
@@ -509,24 +453,19 @@ const DriveSync = (() => {
     queueSync(() => push({ keepalive: true }));
   });
 
-  // uploads the synced campaign and records the new modifiedTime; throws
-  // on failure (push() below is the status-reporting wrapper).
+  // uploads the synced campaign; throws on failure (push() below is the status-reporting wrapper).
   // `keepalive` lets the request outlive the page if it's being closed -
   // browsers only allow that for bodies under 64 KB, so larger campaigns
   // fall back to a normal request (which usually still completes when the
   // tab is merely hidden)
   async function uploadCurrent({ keepalive = false } = {}) {
-    const campaignId = syncedCampaignId;
-    const seq = editSeq;
-    const body = Store.exportJSON(campaignId);
-    const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=modifiedTime`, {
+    const body = Store.exportJSON(syncedCampaignId);
+    await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body,
       keepalive: keepalive && new Blob([body]).size < 60000
     });
-    const data = await res.json();
-    recordSynced(campaignId, data.modifiedTime, seq);
   }
 
   async function push(options) {
@@ -653,8 +592,6 @@ const DriveSync = (() => {
     const bId = localStorage.getItem(backupFileIdKeyFor(campaignId));
     localStorage.removeItem(fileIdKeyFor(campaignId));
     localStorage.removeItem(backupFileIdKeyFor(campaignId));
-    localStorage.removeItem(dirtyKeyFor(campaignId));
-    localStorage.removeItem(syncedTimeKeyFor(campaignId));
     if (!accessToken) return; // not connected - nothing we can do on the Drive side right now
     try {
       if (fId) await trashDriveFile(fId);
