@@ -58,9 +58,12 @@ files it created itself, never the rest of your Drive.
 - **Backup** writes `<name>-backup.json`, which only changes when you press
   the button.
 - Renaming a campaign renames its Drive files. Deleting a campaign moves its
-  Drive files to Drive's trash.
+  Drive files to Drive's trash. You can delete every campaign, which leaves
+  the app empty.
 - Campaign names must map to different file names, so creating "A:B" when
   "A/B" exists gives "A:B (2)". Both would otherwise become `A-B.json`.
+- Nothing is created automatically: on a new device the app starts with no
+  campaigns. Create one with **+**, or use **Pull from Drive**.
 - The list of campaigns is stored per browser. To open a campaign on a new
   device, connect Drive there and create a campaign with **exactly the same
   name**. Its contents are then fetched from Drive. Or use **Pull from Drive**.

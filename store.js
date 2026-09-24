@@ -2,9 +2,11 @@
 // Flat data model for RPG notes, persisted to localStorage. Supports
 // multiple independent campaigns - each campaign has its own node list,
 // its own storage key, and (via drive-sync.js) its own file on Google
-// Drive. Exactly one campaign is "current" at a time; all the node
+// Drive. At most one campaign is "current" at a time; all the node
 // functions below (addNode, getAll, exportJSON, etc.) always operate on
-// whichever campaign is currently active.
+// whichever campaign is currently active. There can be NO campaigns at
+// all (nothing is created automatically) - then getCurrentCampaignId()
+// is null, the node list is empty and addNode does nothing.
 //
 // ============================================================================
 // DATA FORMAT (this is the contract - keep it stable, it's what the
@@ -59,7 +61,7 @@
 // of this app can add fields without older exports losing them.
 //
 // Want to extend the data model later (e.g. tags, color, node type)? Add
-// the fields here, in seedDefaultNodes, and in the normalization step
+// the fields here and in the normalization step
 // inside importJSON.
 
 const Store = (() => {
@@ -136,13 +138,14 @@ const Store = (() => {
   }
 
   function save() {
-    if (trySetItem(dataKey(currentCampaignId), JSON.stringify(nodes))) storageErrorShown = false;
+    if (currentCampaignId && trySetItem(dataKey(currentCampaignId), JSON.stringify(nodes))) storageErrorShown = false;
     saveCampaignRegistry();
   }
 
   function saveCampaignRegistry() {
     trySetItem(CAMPAIGNS_KEY, JSON.stringify(campaigns));
-    trySetItem(CURRENT_CAMPAIGN_KEY, currentCampaignId);
+    if (currentCampaignId) trySetItem(CURRENT_CAMPAIGN_KEY, currentCampaignId);
+    else localStorage.removeItem(CURRENT_CAMPAIGN_KEY);
   }
 
   function loadCampaignNodes(campaignId) {
@@ -181,13 +184,12 @@ const Store = (() => {
       try { campaigns = JSON.parse(rawCampaigns); } catch (e) { campaigns = []; }
     }
 
+    // no campaigns yet - stay empty until the user creates one (or pulls
+    // them from Google Drive)
     if (!Array.isArray(campaigns) || campaigns.length === 0) {
-      // no campaigns yet - start fresh with one example campaign
-      const id = generateId();
-      campaigns = [{ id, name: 'My Campaign' }];
-      currentCampaignId = id;
-      nodes = seedDefaultNodes();
-      save();
+      campaigns = [];
+      currentCampaignId = null;
+      nodes = [];
       return;
     }
 
@@ -196,18 +198,6 @@ const Store = (() => {
       currentCampaignId = campaigns[0].id;
     }
     nodes = loadCampaignNodes(currentCampaignId);
-  }
-
-  function seedDefaultNodes() {
-    const root = {
-      id: generateId(),
-      name: 'My Campaign',
-      notes: 'Welcome! Click the notes button on any node to write **bold text** here - just paste a link like https://example.com and it opens in a new tab automatically.',
-      parentId: null, x: 420, y: 80
-    };
-    const chapter = { id: generateId(), name: 'Chapter 1: The Arrival', notes: '', parentId: root.id, x: 260, y: 240 };
-    const npc = { id: generateId(), name: 'NPC: Innkeeper Borin', notes: '', parentId: chapter.id, x: 140, y: 400 };
-    return [root, chapter, npc];
   }
 
   // --- subscriptions, so views (and Drive sync) can react to changes ---
@@ -290,10 +280,8 @@ const Store = (() => {
     notifyCampaignChanged(); // lets the UI refresh the campaign's displayed name
   }
 
-  // returns false (and does nothing) if this is the only campaign left -
-  // there must always be at least one
+  // deleting the last campaign leaves the app with no campaigns at all
   function deleteCampaign(id) {
-    if (campaigns.length <= 1) return false;
     const idx = campaigns.findIndex(c => c.id === id);
     if (idx === -1) return false;
 
@@ -302,8 +290,8 @@ const Store = (() => {
     localStorage.removeItem(updatedAtKey(id));
 
     if (currentCampaignId === id) {
-      currentCampaignId = campaigns[0].id;
-      nodes = loadCampaignNodes(currentCampaignId);
+      currentCampaignId = campaigns.length ? campaigns[0].id : null;
+      nodes = currentCampaignId ? loadCampaignNodes(currentCampaignId) : [];
     }
     saveCampaignRegistry();
     campaignDeletedListeners.forEach(fn => fn(id)); // lets drive-sync.js trash its Drive files
@@ -342,7 +330,9 @@ const Store = (() => {
 
   // --- writes ---
 
+  // returns null (and does nothing) if there is no campaign to add it to
   function addNode(name, parentId = null) {
+    if (!currentCampaignId) return null;
     const parent = parentId ? nodes.find(n => n.id === parentId) : null;
     const node = {
       id: generateId(),

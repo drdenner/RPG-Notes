@@ -44,6 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const campaigns = Store.listCampaigns();
     const currentId = Store.getCurrentCampaignId();
     campaignSelect.innerHTML = '';
+    if (campaigns.length === 0) {
+      const option = document.createElement('option');
+      option.textContent = 'No campaigns';
+      campaignSelect.appendChild(option);
+    }
     campaigns.forEach(c => {
       const option = document.createElement('option');
       option.value = c.id;
@@ -51,7 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (c.id === currentId) option.selected = true;
       campaignSelect.appendChild(option);
     });
-    campaignDeleteBtn.disabled = campaigns.length <= 1;
+    campaignDeleteBtn.disabled = !currentId;
+    campaignRenameBtn.disabled = !currentId;
+    campaignSelect.disabled = !currentId;
+    document.body.classList.toggle('no-campaign', !currentId);
   }
 
   campaignSelect.addEventListener('change', () => {
@@ -71,9 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   campaignDeleteBtn.addEventListener('click', () => {
     const name = Store.getCurrentCampaignName();
     if (!confirm(`Delete campaign "${name}"? This cannot be undone.`)) return;
-    if (!Store.deleteCampaign(Store.getCurrentCampaignId())) {
-      alert('You can\'t delete your only campaign.');
-    }
+    Store.deleteCampaign(Store.getCurrentCampaignId());
   });
 
   Store.subscribeCampaignChange(updateCampaignUI);

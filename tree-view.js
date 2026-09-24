@@ -27,7 +27,7 @@ const TreeView = (() => {
 
     container.querySelector('#tree-new-root-btn').addEventListener('click', () => {
       const node = Store.addNode('New root node', null);
-      NotesEditor.open(node.id);
+      if (node) NotesEditor.open(node.id);
     });
   }
 

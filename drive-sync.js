@@ -108,9 +108,9 @@ const DriveSync = (() => {
         error_callback: onTokenError
       });
       setStatus('disconnected');
-      // used Drive before on this device (for this campaign)? try a silent
-      // reconnect - unless the user deliberately disconnected last time
-      if (fileId && localStorage.getItem(DISCONNECTED_KEY) !== '1') {
+      // used Drive before on this device? try a silent reconnect - unless
+      // the user deliberately disconnected last time
+      if ((fileId || folderId) && localStorage.getItem(DISCONNECTED_KEY) !== '1') {
         tokenClient.requestAccessToken({ prompt: '' });
       }
     });
@@ -205,6 +205,7 @@ const DriveSync = (() => {
   // strings; a missing one counts as oldest. If neither side has one (e.g.
   // a fresh campaign on a new device), Drive wins.
   async function syncOnConnect() {
+    if (!syncedCampaignId) return; // no campaigns on this device - nothing to sync
     if (await ensureFile()) return; // just created from local data - already equal
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
     const text = await res.text();
@@ -500,6 +501,7 @@ const DriveSync = (() => {
   }
 
   async function doBackup() {
+    if (!syncedCampaignId) throw new Error('There is no campaign to back up.');
     const id = await ensureBackupFile();
     await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
       method: 'PATCH',

@@ -228,6 +228,7 @@ body.view-mode .mindmap-node {
 /* --- layout --- */
 
 .app-main {
+  position: relative;
   flex: 1;
   display: flex;
   min-height: 0;
@@ -242,6 +243,25 @@ body.view-mode .mindmap-node {
 
 .view.active {
   display: flex;
+}
+
+/* shown instead of the "new root node" buttons while there are no campaigns */
+.no-campaign-msg {
+  display: none;
+  position: absolute;
+  top: 40%;
+  z-index: 1;
+  left: 16px;
+  right: 16px;
+  text-align: center;
+  color: var(--text-dim);
+}
+body.no-campaign .no-campaign-msg {
+  display: block;
+}
+body.no-campaign #tree-new-root-btn,
+body.no-campaign #mindmap-new-root-btn {
+  display: none !important;
 }
 
 /* --- tree list --- */

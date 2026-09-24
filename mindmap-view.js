@@ -58,6 +58,7 @@ const MindmapView = (() => {
       const worldX = Math.max(0, (rect.width / 2 - panX) / zoom - 60);
       const worldY = Math.max(0, (rect.height / 2 - panY) / zoom - 20);
       const node = Store.addNode('New root node', null);
+      if (!node) return;
       Store.moveNodePosition(node.id, worldX, worldY);
       NotesEditor.open(node.id);
     });
