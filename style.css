@@ -125,6 +125,7 @@ body.view-mode #mindmap-new-node-btn,
 body.view-mode #campaign-new-btn,
 body.view-mode #campaign-rename-btn,
 body.view-mode #campaign-delete-btn,
+body.view-mode #campaign-remove-local-btn,
 body.view-mode .mindmap-hint {
   display: none !important;
 }

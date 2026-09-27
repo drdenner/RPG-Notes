@@ -17,6 +17,13 @@
 // also fetches campaigns that only exist on Drive). In between, edits to
 // the current campaign are uploaded automatically without re-checking.
 //
+// While connected, it also keeps a list of the campaign files on Drive, so
+// the campaign dropdown can show campaigns that aren't on this device (☁)
+// and fetch one when it's picked (downloadCampaign). "Remove from this
+// device" (removeFromDevice) is the reverse: it syncs a campaign to Drive
+// and only deletes the local copy once Drive has confirmed the latest
+// version - the Drive file is kept.
+//
 // Every Drive operation runs through `queueSync()`, one after another, so
 // e.g. a campaign switch can't run in the middle of a connect and mix up
 // which campaign `fileId` belongs to.
@@ -56,6 +63,10 @@ const DriveSync = (() => {
   let syncQueue = Promise.resolve();
   let uploadTimer = null;
   let statusCallback = () => {};
+  // file names of every campaign on Drive, as of the last listing (empty
+  // while not connected) - see getDriveOnlyCampaigns
+  let remoteFileNames = [];
+  const remoteListeners = [];
 
   function isConfigured() {
     return !!CLIENT_ID && !CLIENT_ID.startsWith('YOUR-');
@@ -63,6 +74,28 @@ const DriveSync = (() => {
 
   function setStatus(status, detail) {
     statusCallback(status, detail || '');
+  }
+
+  // --- campaigns that are on Drive but not on this device ---
+
+  function subscribeRemoteCampaigns(fn) {
+    remoteListeners.push(fn);
+  }
+
+  function setRemoteFileNames(names) {
+    remoteFileNames = names;
+    remoteListeners.forEach(fn => fn());
+  }
+
+  // names of the campaigns on Drive that aren't on this device (computed
+  // live, so a campaign that was just added/removed locally is right away)
+  function getDriveOnlyCampaigns() {
+    const localFileNames = new Set(Store.listCampaigns().map(c => fileNameFor(c.name)));
+    return remoteFileNames.filter(n => !localFileNames.has(n)).map(campaignNameOf);
+  }
+
+  async function refreshRemoteList() {
+    setRemoteFileNames((await listCampaignFiles()).map(f => f.name));
   }
 
   // runs fn() after every previously queued operation has finished
@@ -143,6 +176,7 @@ const DriveSync = (() => {
       if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
       accessToken = null;
       fileId = null;
+      setRemoteFileNames([]);
       setStatus('disconnected');
     });
   }
@@ -156,6 +190,7 @@ const DriveSync = (() => {
         const found = await findFile(fileNameFor(syncedCampaignName));
         fileId = await syncCampaign(syncedCampaignId, syncedCampaignName, found);
       }
+      await refreshRemoteList();
       setStatus('connected');
     } catch (err) {
       if (err.unreadable) alert(err.message + ' Syncing is paused for this campaign until the next sync.');
@@ -244,6 +279,7 @@ const DriveSync = (() => {
         }
       }
 
+      setRemoteFileNames(files.map(f => f.name));
       setStatus('connected');
       return { added, failed };
     } catch (err) {
@@ -267,17 +303,79 @@ const DriveSync = (() => {
     setStatus('syncing');
     try {
       const entries = [];
-      for (const f of await listCampaignFiles()) {
+      const files = await listCampaignFiles();
+      for (const f of files) {
         entries.push({ name: campaignNameOf(f.name), data: parseOrNull(await downloadFile(f.id)) });
       }
       const result = Store.replaceAllCampaigns(entries);
       fileId = null;
+      setRemoteFileNames(files.map(f => f.name));
       setStatus('connected');
       return result;
     } catch (err) {
       reportError(err);
       throw err;
     }
+  }
+
+  // fetches a campaign that's only on Drive (picked from the dropdown) onto
+  // this device. Resolves with its local campaign id; the caller switches
+  // to it, which syncs it as usual.
+  function downloadCampaign(name) {
+    if (!accessToken) return Promise.reject(new Error('Not connected to Google Drive - click Connect Drive.'));
+    return queueSync(async () => {
+      setStatus('syncing');
+      try {
+        const id = await findFile(fileNameFor(name));
+        if (!id) throw new Error(`"${name}" is no longer on Google Drive.`);
+        const data = parseOrNull(await downloadFile(id));
+        let campaignId;
+        try {
+          campaignId = Store.addCampaignFromData(name, data);
+        } catch (err) {
+          throw unreadableError(name, err.message);
+        }
+        setStatus('connected');
+        return campaignId;
+      } catch (err) {
+        reportError(err);
+        throw err;
+      }
+    });
+  }
+
+  // "Remove from this device": makes sure Drive has the campaign's latest
+  // version (newest wins, like any sync), and only then deletes the local
+  // copy - without trashing the Drive file. If anything fails (offline,
+  // sign-in expired, unreadable Drive file), nothing is deleted.
+  function removeFromDevice(campaignId) {
+    if (!accessToken) return Promise.reject(new Error('Not connected to Google Drive - click Connect Drive.'));
+    if (campaignId === syncedCampaignId) { clearTimeout(uploadTimer); uploadTimer = null; } // uploaded below anyway
+    return queueSync(async () => {
+      const campaign = Store.listCampaigns().find(c => c.id === campaignId);
+      if (!campaign) return;
+      setStatus('syncing');
+      try {
+        let id = await findFile(fileNameFor(campaign.name));
+        // sync again if it was edited while the upload was running, so that
+        // edit isn't lost when the local copy is deleted
+        let before;
+        do {
+          before = Store.getUpdatedAt(campaignId);
+          id = await syncCampaign(campaignId, campaign.name, id);
+        } while (Store.getUpdatedAt(campaignId) !== before);
+
+        if (campaignId === syncedCampaignId) fileId = null; // nothing left to upload for it
+        const fileName = fileNameFor(campaign.name);
+        if (!remoteFileNames.includes(fileName)) remoteFileNames = [...remoteFileNames, fileName];
+        Store.deleteCampaign(campaignId, { localOnly: true });
+        setRemoteFileNames(remoteFileNames); // it's now a ☁ campaign
+        setStatus('connected');
+      } catch (err) {
+        reportError(err);
+        throw err;
+      }
+    });
   }
 
   // --- automatic upload of local edits ---
@@ -344,7 +442,10 @@ const DriveSync = (() => {
       if (!accessToken) return;
       try {
         const id = fileId || await findFile(fileNameFor(oldName));
-        if (id) await renameFile(id, fileNameFor(newCampaignName));
+        if (id) {
+          await renameFile(id, fileNameFor(newCampaignName));
+          setRemoteFileNames(remoteFileNames.map(n => n === fileNameFor(oldName) ? fileNameFor(newCampaignName) : n));
+        }
       } catch (err) {
         reportError(err);
       }
@@ -358,6 +459,7 @@ const DriveSync = (() => {
       try {
         const id = await findFile(fileNameFor(campaignName));
         if (id) await patchFile(id, { trashed: true });
+        setRemoteFileNames(remoteFileNames.filter(n => n !== fileNameFor(campaignName)));
       } catch (err) {
         console.error('Could not move the campaign\'s Drive file to the trash', err);
       }
@@ -373,6 +475,7 @@ const DriveSync = (() => {
       accessToken = null;
       fileId = null;
       clearTimeout(uploadTimer); uploadTimer = null;
+      setRemoteFileNames([]);
       setStatus('reauth', 'The Google sign-in expired');
       const err = new Error('The Google sign-in expired - click Connect Drive.');
       err.reauth = true;
@@ -483,5 +586,8 @@ const DriveSync = (() => {
     });
   }
 
-  return { init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured };
+  return {
+    init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured,
+    subscribeRemoteCampaigns, getDriveOnlyCampaigns, downloadCampaign, removeFromDevice
+  };
 })();

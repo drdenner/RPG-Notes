@@ -42,13 +42,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const campaignNewBtn = document.getElementById('campaign-new-btn');
   const campaignRenameBtn = document.getElementById('campaign-rename-btn');
   const campaignDeleteBtn = document.getElementById('campaign-delete-btn');
+  const campaignRemoveLocalBtn = document.getElementById('campaign-remove-local-btn');
+  // dropdown values of campaigns that are only on Drive (not local campaign ids)
+  const DRIVE_OPTION_PREFIX = 'drive:';
+  let driveConnected = false; // kept up to date by updateDriveUI below
 
   function updateCampaignUI() {
     const campaigns = Store.listCampaigns();
     const currentId = Store.getCurrentCampaignId();
+    const driveOnly = DriveSync.getDriveOnlyCampaigns();
     campaignSelect.innerHTML = '';
     if (campaigns.length === 0) {
       const option = document.createElement('option');
+      option.value = '';
       option.textContent = 'No campaigns';
       campaignSelect.appendChild(option);
     }
@@ -59,14 +65,39 @@ document.addEventListener('DOMContentLoaded', () => {
       if (c.id === currentId) option.selected = true;
       campaignSelect.appendChild(option);
     });
+    // campaigns on Google Drive that aren't on this device - picking one fetches it
+    if (driveOnly.length) {
+      const group = document.createElement('optgroup');
+      group.label = 'On Google Drive';
+      driveOnly.forEach(name => {
+        const option = document.createElement('option');
+        option.value = DRIVE_OPTION_PREFIX + name;
+        option.textContent = '☁ ' + name;
+        group.appendChild(option);
+      });
+      campaignSelect.appendChild(group);
+    }
     campaignDeleteBtn.disabled = !currentId;
     campaignRenameBtn.disabled = !currentId;
-    campaignSelect.disabled = !currentId;
+    campaignRemoveLocalBtn.hidden = !driveConnected || !currentId;
+    campaignSelect.disabled = !currentId && !driveOnly.length;
     document.body.classList.toggle('no-campaign', !currentId);
   }
 
-  campaignSelect.addEventListener('change', () => {
-    Store.switchCampaign(campaignSelect.value);
+  campaignSelect.addEventListener('change', async () => {
+    const value = campaignSelect.value;
+    if (!value.startsWith(DRIVE_OPTION_PREFIX)) {
+      Store.switchCampaign(value);
+      return;
+    }
+    campaignSelect.disabled = true;
+    try {
+      const id = await DriveSync.downloadCampaign(value.slice(DRIVE_OPTION_PREFIX.length));
+      Store.switchCampaign(id);
+    } catch (err) {
+      if (!err.reauth) alert('Could not get the campaign from Google Drive: ' + err.message);
+    }
+    updateCampaignUI(); // re-enables it, and shows the right selection after a failure
   });
 
   campaignNewBtn.addEventListener('click', () => {
@@ -85,7 +116,25 @@ document.addEventListener('DOMContentLoaded', () => {
     Store.deleteCampaign(Store.getCurrentCampaignId());
   });
 
+  // saved to Drive first; the local copy is only deleted once that worked
+  campaignRemoveLocalBtn.addEventListener('click', async () => {
+    const name = Store.getCurrentCampaignName();
+    const ok = confirm(
+      `Remove "${name}" from this device?\n\n` +
+      'It\'s saved to Google Drive first and stays there. Pick it (☁) in the campaign list to get it back.'
+    );
+    if (!ok) return;
+    campaignRemoveLocalBtn.disabled = true;
+    try {
+      await DriveSync.removeFromDevice(Store.getCurrentCampaignId());
+    } catch (err) {
+      if (!err.reauth) alert('Could not save the campaign to Google Drive, so it was NOT removed from this device.\n\n' + err.message);
+    }
+    campaignRemoveLocalBtn.disabled = false;
+  });
+
   Store.subscribeCampaignChange(updateCampaignUI);
+  DriveSync.subscribeRemoteCampaigns(updateCampaignUI);
   updateCampaignUI();
 
   // --- navigation: the list is home; a main node's mindmap is opened from
@@ -194,6 +243,10 @@ document.addEventListener('DOMContentLoaded', () => {
     driveStatusText.parentElement.title = detail || '';
 
     const isConnectedish = status === 'connected' || status === 'syncing';
+    if (driveConnected !== isConnectedish) {
+      driveConnected = isConnectedish;
+      updateCampaignUI(); // shows/hides "Remove from this device"
+    }
     driveConnectBtn.hidden = isConnectedish || status === 'connecting';
     driveSyncBtn.hidden = !isConnectedish;
     drivePullBtn.hidden = !isConnectedish;

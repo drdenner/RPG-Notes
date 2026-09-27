@@ -71,6 +71,15 @@ files it created itself, never the rest of your Drive.
   campaign. After that, each change is uploaded about 10 seconds later (or
   right away when the tab is hidden or closed), without re-checking Drive.
   So avoid editing the same campaign on two devices at the same time.
+- While connected, the campaign dropdown also lists the campaigns that are
+  on Drive but not on this device, marked **☁**. Picking one downloads it
+  and opens it. Campaigns stay on the device after you switch away, as an
+  offline copy.
+- **⏏ Remove from this device** (next to the campaign name, only while
+  connected) saves the campaign to Drive first and deletes the local copy
+  only after Drive has confirmed it. If that fails (offline, sign-in
+  expired), nothing is removed. The Drive file is kept, so the campaign
+  shows up as **☁** in the dropdown again.
 - **Sync now** syncs **every** campaign, and adds campaigns that only exist
   on Drive (e.g. created on another device).
 - **Pull from Drive** (after asking for OK) deletes **all** campaigns on this
@@ -80,14 +89,15 @@ files it created itself, never the rest of your Drive.
   and reported, and old `-backup.json` / `-conflict-` files from earlier
   versions are ignored. Drive keeps older versions of every file itself
   (right-click the file, **Manage versions**).
-- Renaming a campaign renames its Drive file. Deleting a campaign moves its
-  Drive file to Drive's trash. You can delete every campaign, which leaves
+- Renaming a campaign renames its Drive file. Deleting a campaign (✕) moves
+  its Drive file to Drive's trash. You can delete every campaign, which leaves
   the app empty.
 - Campaign names must map to different file names, so creating "A:B" when
   "A/B" exists gives "A:B (2)". Both would otherwise become `A-B.json`.
 - Nothing is created automatically: on a new device the app starts with no
-  campaigns. Connect Drive and press **Sync now** (or **Pull from Drive**),
-  or create one with **+**.
+  campaigns. Connect Drive and pick a **☁** campaign from the dropdown (or
+  press **Sync now** / **Pull from Drive** to get them all), or create one
+  with **+**.
 - The Google sign-in lasts about an hour. When it expires, the status shows
   **Drive: sign in again**. Click **Connect Drive** to continue. Changes made
   meanwhile are uploaded at the next sync, since they're newer.

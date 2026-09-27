@@ -272,8 +272,10 @@ const Store = (() => {
     notifyCampaignChanged(); // lets the UI refresh the campaign's displayed name
   }
 
-  // deleting the last campaign leaves the app with no campaigns at all
-  function deleteCampaign(id) {
+  // deleting the last campaign leaves the app with no campaigns at all.
+  // `localOnly` only removes it from this device ("Remove from this device"):
+  // the campaign-deleted listeners aren't fired, so its Drive file is kept
+  function deleteCampaign(id, { localOnly = false } = {}) {
     const idx = campaigns.findIndex(c => c.id === id);
     if (idx === -1) return false;
 
@@ -286,7 +288,7 @@ const Store = (() => {
       nodes = currentCampaignId ? loadCampaignNodes(currentCampaignId) : [];
     }
     saveCampaignRegistry();
-    campaignDeletedListeners.forEach(fn => fn(id, deleted.name)); // lets drive-sync.js trash its Drive file
+    if (!localOnly) campaignDeletedListeners.forEach(fn => fn(id, deleted.name)); // lets drive-sync.js trash its Drive file
     notifyCampaignChanged();
     return true;
   }
@@ -430,7 +432,8 @@ const Store = (() => {
   }
 
   // adds a campaign from a parsed campaign file, without switching to it
-  // (unless there was no current campaign). Throws if it isn't readable.
+  // (unless there was no current campaign), and returns its id. Throws if
+  // it isn't readable.
   function addCampaignFromData(name, data) {
     const newNodes = normalizeNodes(data);
     const id = generateId();
@@ -442,6 +445,7 @@ const Store = (() => {
     }
     saveCampaignRegistry();
     notifyCampaignChanged();
+    return id;
   }
 
   function readUpdatedAt(parsed) {
