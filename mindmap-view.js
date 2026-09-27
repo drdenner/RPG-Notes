@@ -1,14 +1,13 @@
 // mindmap-view.js
 // Mindmap view: nodes as freely placeable boxes on a "world" layer
-// (mindmap-world), one level of the campaign at a time, with SVG lines
-// from the current node to its children.
+// (mindmap-world), with SVG lines showing parent/child connections.
 //
-// - Only the current node (`currentParentId`, null = the campaign's root
-//   level) and its direct children are rendered. The current node is drawn
-//   at its own x/y, highlighted, with a line to each child; on the root
-//   level there's no current node, just the root nodes. Tapping a child
-//   goes into it, and the breadcrumb bar at the top goes back up. The data
-//   doesn't change at all: the current level is just a filter on parentId.
+// - Two levels: the start page shows only the campaign's root nodes (the
+//   "main nodes", e.g. chapters). Tapping one goes into it (`mainNodeId`),
+//   which shows that main node and its whole subtree - every descendant,
+//   with lines - as a normal mindmap. The ← button / breadcrumb at the top
+//   goes back to the start page. The data doesn't change at all: which
+//   nodes are shown is just a filter on parentId.
 // - Panning/zoom work by transforming the whole world layer (translate+scale),
 //   node positions (x,y) are always in "world" coordinates and unaffected by zoom.
 // - While dragging, the DOM and lines are updated directly (no full
@@ -16,10 +15,10 @@
 // - All input uses Pointer Events (not mouse events), so it behaves the
 //   same with mouse, pen and touch/tablet. One-finger drag on empty canvas
 //   pans, two-finger pinch zooms (plus the mouse wheel on desktop).
-// - Tapping a child (no movement) goes into it; tapping the current node
-//   opens its notes. Notes also open from the small notes button on every
-//   node, or from the current node's name in the breadcrumb (NotesEditor -
-//   rename and notes both live there). Dragging
+// - Tapping a node (no movement) inside a main node opens it (NotesEditor -
+//   rename and notes both live there). On the start page, tapping a main
+//   node goes into it instead, so its notes open from its small notes
+//   button there (or its name in the breadcrumb once inside). Dragging
 //   it (movement past a small threshold) moves it instead, and only works
 //   in edit mode.
 //
@@ -28,8 +27,8 @@
 // what's already on screen (tracked in `entries`, keyed by node id) and
 // only creates/updates/removes what actually changed, instead of tearing
 // down and rebuilding every node and line on every single Store change.
-// Nodes outside the current level never get any DOM at all, so a big campaign
-// costs no more to show than its busiest level. Each node's rendered box
+// Nodes outside the current main node never get any DOM at all, so a big
+// campaign costs no more to show than its biggest main node. Each node's rendered box
 // size (offsetWidth/offsetHeight) is measured once and cached on its
 // entry, and only re-measured when its text changes - reading
 // offsetWidth/Height forces the browser to flush layout, so avoiding
@@ -49,8 +48,8 @@ const MindmapView = (() => {
   let panX = 0;
   let panY = 0;
 
-  // the node whose children are shown (null = the campaign's root nodes)
-  let currentParentId = null;
+  // the root node whose subtree is shown (null = the start page, listing the root nodes)
+  let mainNodeId = null;
   // campaign + level that was last rendered, to re-center when it changes
   let renderedLevelKey = null;
 
@@ -80,7 +79,7 @@ const MindmapView = (() => {
       const rect = canvasEl.getBoundingClientRect();
       const worldX = Math.max(0, (rect.width / 2 - panX) / zoom - 60);
       const worldY = Math.max(0, (rect.height / 2 - panY) / zoom - 20);
-      const node = Store.addNode(currentParentId ? 'New node' : 'New root node', currentParentId);
+      const node = Store.addNode(mainNodeId ? 'New node' : 'New root node', mainNodeId);
       if (!node) return;
       Store.moveNodePosition(node.id, worldX, worldY);
       NotesEditor.open(node.id);
@@ -169,7 +168,7 @@ const MindmapView = (() => {
   // --- levels / navigation ---
 
   function navigateTo(parentId) {
-    currentParentId = parentId;
+    mainNodeId = parentId;
     render();
   }
 
@@ -197,7 +196,7 @@ const MindmapView = (() => {
   // "← | Campaign › Chapter 1 › Vinterholm 📝" - hidden on the root level
   function renderBreadcrumb(nodeById) {
     const path = []; // root-level node ... current node
-    for (let n = nodeById.get(currentParentId); n; n = nodeById.get(n.parentId)) path.unshift(n);
+    for (let n = nodeById.get(mainNodeId); n; n = nodeById.get(n.parentId)) path.unshift(n);
 
     breadcrumbEl.innerHTML = '';
     breadcrumbEl.hidden = path.length === 0;
@@ -248,44 +247,55 @@ const MindmapView = (() => {
     const allNodes = Store.getAll();
     const nodeById = new Map(allNodes.map(n => [n.id, n]));
 
-    // the current node was deleted (or the campaign switched): back to the root level
-    if (currentParentId && !nodeById.has(currentParentId)) currentParentId = null;
+    // the main node was deleted (or the campaign switched): back to the start page
+    if (mainNodeId && !nodeById.has(mainNodeId)) mainNodeId = null;
 
-    const childCounts = new Map();
-    const levelNodes = [];
+    const childrenOf = new Map(); // parentId -> [child, ...]
     allNodes.forEach(n => {
-      if (n.parentId) childCounts.set(n.parentId, (childCounts.get(n.parentId) || 0) + 1);
-      // the current node itself + its children
-      if (n.parentId === currentParentId || n.id === currentParentId) levelNodes.push(n);
+      if (!childrenOf.has(n.parentId)) childrenOf.set(n.parentId, []);
+      childrenOf.get(n.parentId).push(n);
     });
+    // start page: the root nodes. Inside a main node: it + all its descendants
+    let levelNodes = childrenOf.get(null) || [];
+    if (mainNodeId) {
+      levelNodes = [nodeById.get(mainNodeId)];
+      for (let i = 0; i < levelNodes.length; i++) {
+        levelNodes.push(...(childrenOf.get(levelNodes[i].id) || []));
+      }
+    }
     const levelIds = new Set(levelNodes.map(n => n.id));
 
-    // remove entries for nodes that no longer exist or aren't on this level
+    // switched main node / campaign: start from a clean slate, since the
+    // start page styles nodes differently (so cached box sizes don't carry over)
+    const levelKey = Store.getCurrentCampaignId() + '|' + mainNodeId;
+    const levelChanged = levelKey !== renderedLevelKey;
+    if (levelChanged) {
+      renderedLevelKey = levelKey;
+      [...entries.keys()].forEach(removeNodeEntry);
+      canvasEl.classList.toggle('start-page', !mainNodeId);
+    }
+
+    // remove entries for nodes that no longer exist or aren't shown any more
     entries.forEach((entry, id) => {
       if (!levelIds.has(id)) removeNodeEntry(id);
     });
 
     levelNodes.forEach(node => {
-      const childCount = childCounts.get(node.id) || 0;
+      const childCount = (childrenOf.get(node.id) || []).length;
       const entry = entries.get(node.id);
       const updated = entry ? updateNodeEntry(entry, node, childCount) : createNodeEntry(node, childCount);
-      updated.div.classList.toggle('is-current', node.id === currentParentId);
+      updated.div.classList.toggle('is-current', node.id === mainNodeId);
     });
 
-    // second pass: lines need every node's box to already be sized and
-    // positioned. Only a child's line to the current node is ever drawn -
-    // the current node's own parent isn't rendered, so that line is removed
+    // second pass: create/update/remove connection lines (they need every
+    // node's box to already be sized/positioned)
     levelNodes.forEach(node => syncConnection(node));
 
     renderBreadcrumb(nodeById);
-    emptyEl.hidden = entries.size > (currentParentId ? 1 : 0) || !Store.getCurrentCampaignId();
-    newNodeBtn.textContent = currentParentId ? '+ New node' : '+ New root node';
+    emptyEl.hidden = entries.size > (mainNodeId ? 1 : 0) || !Store.getCurrentCampaignId();
+    newNodeBtn.textContent = mainNodeId ? '+ New node' : '+ New root node';
 
-    const levelKey = Store.getCurrentCampaignId() + '|' + currentParentId;
-    if (levelKey !== renderedLevelKey) {
-      renderedLevelKey = levelKey;
-      centerView();
-    }
+    if (levelChanged) centerView();
   }
 
   function createNodeEntry(node, childCount) {
@@ -443,8 +453,8 @@ const MindmapView = (() => {
     });
     div.appendChild(delBtn);
 
-    // create a new child node directly from this node, and go into this
-    // node so the new child is actually visible
+    // create a new child node directly from this node (on the start page,
+    // also go into it, so the new child is actually visible)
     const addBtn = document.createElement('button');
     addBtn.className = 'mindmap-node-add';
     addBtn.title = 'Add child node';
@@ -453,7 +463,7 @@ const MindmapView = (() => {
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
       const child = Store.addNode('New node', entry.cached.id);
-      navigateTo(entry.cached.id);
+      if (!mainNodeId) navigateTo(entry.cached.id);
       NotesEditor.open(child.id);
     });
     div.appendChild(addBtn);
@@ -471,8 +481,8 @@ const MindmapView = (() => {
     return div;
   }
 
-  // tapping/clicking without movement goes into the node (or, for the
-  // current node, opens its notes); dragging past a
+  // tapping/clicking without movement opens the node (on the start page:
+  // goes into the main node instead); dragging past a
   // small threshold moves it instead (edit mode only). Dragging only ever
   // changes the node's position - re-parenting is done in the list view.
   // Uses Pointer Events instead of separate mouse+touch handling.
@@ -544,7 +554,7 @@ const MindmapView = (() => {
         if (moved && editMode) {
           Store.moveNodePosition(entry.cached.id, entry.cached.x, entry.cached.y);
         } else if (!moved) {
-          if (entry.cached.id === currentParentId) NotesEditor.open(entry.cached.id);
+          if (mainNodeId) NotesEditor.open(entry.cached.id);
           else navigateTo(entry.cached.id);
         }
       }

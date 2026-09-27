@@ -8,12 +8,13 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 - Multiple independent campaigns, one active at a time
 - Edit mode / view mode (view mode locks everything, for use during a session)
 - Works with mouse, pen and touch, so it's usable on a tablet
-- The Mindmap shows one level at a time: the root nodes, or the node you're
-  in (highlighted) with lines out to its direct children. Tap a child to go
-  into it, and use the ← button or the breadcrumb at the top to go back up.
-  Tapping the highlighted node, its 📝 button, or its name in the breadcrumb
-  opens its notes, and "▸ 3" means a node has 3 children. Only the current
-  level is rendered, which keeps big campaigns fast
+- The Mindmap starts on the campaign's root nodes (the main nodes, e.g.
+  chapters). Tap one to go into it: that main node and everything under it
+  is shown as a normal mindmap with lines, where tapping a node opens its
+  notes. Use the ← button or the breadcrumb at the top to go back. On the
+  start page, a main node's notes open from its 📝 button, and "▸ 3" means
+  it has 3 children. Only the open main node is rendered, which keeps big
+  campaigns fast
 - Move a node to a new parent by dragging its ⠿ grip in the List view; in the
   Mindmap, dragging a node only changes its position
 - Everything is saved locally in the browser (`localStorage`)
@@ -125,9 +126,9 @@ authoritative description is at the top of `store.js`.
 - Children are never stored on a node. They're derived from `parentId`.
 - `notes` is plain text, never HTML. `**bold**` and URLs are only formatted
   when displayed.
-- `x`/`y` are the node's position in the mindmap. The mindmap only shows
-  a node and its children at a time, so positions only matter relative to a
-  node's parent and siblings.
+- `x`/`y` are the node's position in the mindmap. The mindmap shows either
+  the root nodes or one root node's subtree, so positions only matter within
+  those.
 - Loading a file repairs rather than rejects: missing fields get defaults, a
   `parentId` pointing at a missing node makes it a root, parent cycles are
   broken, duplicated ids get a fresh id. Unknown extra fields on a node are

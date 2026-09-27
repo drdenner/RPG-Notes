@@ -373,30 +373,6 @@ body.no-campaign #mindmap-new-root-btn {
   background: rgba(201, 162, 91, 0.12);
 }
 
-/* the node you're "in", drawn with lines out to its children; tapping
-   it opens its notes. It's deleted from the level above, not here */
-.mindmap-node.is-current {
-  border: 2px solid var(--accent-gold);
-  font-weight: 600;
-}
-
-.mindmap-node.is-current .mindmap-node-del {
-  display: none;
-}
-
-/* "▸ 3": the node has 3 children, tap it to go in */
-.mindmap-node-count {
-  display: block;
-  margin-top: 4px;
-  pointer-events: none;
-  color: var(--text-dim);
-  font-size: 0.75rem;
-}
-
-.mindmap-node-count[hidden] {
-  display: none;
-}
-
 /* small marker so you can tell at a glance which nodes have notes */
 .tree-name.has-notes {
   border-left: 2px solid var(--accent-gold);
@@ -582,8 +558,8 @@ body.no-campaign #mindmap-new-root-btn {
   font-size: 0.92rem;
 }
 
-/* the node you're "in", drawn with lines out to its children; tapping
-   it opens its notes. It's deleted from the level above, not here */
+/* the main node you're in, at the top of its subtree. It's deleted from
+   the start page, not here */
 .mindmap-node.is-current {
   border: 2px solid var(--accent-gold);
   font-weight: 600;
@@ -593,7 +569,7 @@ body.no-campaign #mindmap-new-root-btn {
   display: none;
 }
 
-/* "▸ 3": the node has 3 children, tap it to go in */
+/* start page only: "▸ 3" = the main node has 3 children, tap it to go in */
 .mindmap-node-count {
   display: block;
   margin-top: 4px;
@@ -652,8 +628,13 @@ body.no-campaign #mindmap-new-root-btn {
   background: var(--accent-gold-bright);
 }
 
-/* opens the node's notes (tapping the node itself goes into it) - stays
-   visible in view mode too, and isn't hidden behind hover */
+/* start page only: opens a main node's notes (tapping the node itself goes
+   into it). Stays visible in view mode too, and isn't hidden behind hover */
+.mindmap-canvas:not(.start-page) .mindmap-node-notes,
+.mindmap-canvas:not(.start-page) .mindmap-node-count {
+  display: none;
+}
+
 .mindmap-node-notes {
   position: absolute;
   bottom: -10px;
