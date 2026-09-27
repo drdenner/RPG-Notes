@@ -51,6 +51,14 @@
 //     bold, and any http(s)/www URL is auto-linked - see notes-editor.js
 //     for the renderer. It is NEVER HTML, so it's safe to store/display as-is.
 //   - x/y are only used by the mindmap view (pixel position on its canvas)
+//   - optional "board": "notes" marks a note on the Notes tab (see
+//     notes-board.js) instead of a node of the campaign's list/mindmaps.
+//     Its name is the note's title, notes its description, x/y its place
+//     on the board; parentId is always null. Keeping the notes in the same
+//     list means they go to Drive, backups and Undo like any node, and an
+//     older version of the app keeps them (it just shows them as main
+//     nodes). getAll()/getById() leave board nodes out, so the list and
+//     the mindmaps never see them; getBoardNodes() returns them.
 //
 // normalizeNodes() repairs incoming nodes defensively (missing
 // fields get sane defaults, a parentId pointing at a non-existent node
@@ -327,13 +335,20 @@ const Store = (() => {
 
   // --- reads ---
 
+  // the campaign's own nodes (the list and the mindmaps) - not the notes
+  // on the Notes tab, see getBoardNodes
   function getAll() {
-    return nodes.map(n => ({ ...n }));
+    return nodes.filter(n => !n.board).map(n => ({ ...n }));
   }
 
   function getById(id) {
-    const n = nodes.find(n => n.id === id);
+    const n = nodes.find(n => n.id === id && !n.board);
     return n ? { ...n } : null;
+  }
+
+  // the nodes on a board, e.g. 'notes' (the Notes tab)
+  function getBoardNodes(board) {
+    return nodes.filter(n => n.board === board).map(n => ({ ...n }));
   }
 
   // is `maybeAncestorId` an ancestor of (or equal to) `id`?
@@ -362,6 +377,24 @@ const Store = (() => {
       parentId: parent ? parent.id : null,
       x: spot.x,
       y: spot.y
+    };
+    nodes.push(node);
+    notify();
+    return { ...node };
+  }
+
+  // a new node on a board (e.g. 'notes'), at x/y; returns null (and does
+  // nothing) if there is no campaign to add it to
+  function addBoardNode(board, name, x, y) {
+    if (!currentCampaignId) return null;
+    const node = {
+      id: generateId(),
+      name: name || 'New note',
+      notes: '',
+      parentId: null,
+      x: Math.max(0, Math.round(x)),
+      y: Math.max(0, Math.round(y)),
+      board
     };
     nodes.push(node);
     notify();
@@ -592,17 +625,22 @@ const Store = (() => {
       return id;
     });
 
-    const validIds = new Set(ids);
+    // board nodes (notes on the Notes tab) are never anyone's parent or
+    // child - and a "board" that isn't a non-empty string doesn't count
+    const onBoard = n => typeof n.board === 'string' && n.board !== '';
+    const validIds = new Set(ids.filter((_, i) => !onBoard(incoming[i])));
     const imported = incoming.map((n, i) => {
-      return {
+      const node = {
         ...n, // preserve any fields a newer/older version of the app added
         id: ids[i],
         name: typeof n.name === 'string' && n.name ? n.name : 'Unnamed node',
         notes: typeof n.notes === 'string' ? n.notes : '',
-        parentId: typeof n.parentId === 'string' && validIds.has(n.parentId) && n.parentId !== ids[i] ? n.parentId : null,
+        parentId: !onBoard(n) && typeof n.parentId === 'string' && validIds.has(n.parentId) && n.parentId !== ids[i] ? n.parentId : null,
         x: typeof n.x === 'number' && isFinite(n.x) ? n.x : 0,
         y: typeof n.y === 'number' && isFinite(n.y) ? n.y : 0
       };
+      if ('board' in node && !onBoard(node)) delete node.board;
+      return node;
     });
 
     // break any longer cycles a corrupted/hand-edited file might contain
@@ -663,8 +701,8 @@ const Store = (() => {
   load();
 
   return {
-    getAll, getById,
-    addNode, updateNode, deleteNode, restoreNodes, moveNode, moveNodePosition, setPositions,
+    getAll, getById, getBoardNodes,
+    addNode, addBoardNode, updateNode, deleteNode, restoreNodes, moveNode, moveNodePosition, setPositions,
     subscribe, exportJSON, getUpdatedAt, setCampaignData, addCampaignFromData,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,
     createCampaign, switchCampaign, renameCampaign, deleteCampaign, replaceAllCampaigns,

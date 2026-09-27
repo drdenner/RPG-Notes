@@ -7,10 +7,19 @@ freely arranged **Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
 - Tabs at the left of the top bar: **Campaign** (the list and the
-  mindmaps described below), **Players**, **Notes** and **NPCs**. The last
-  three are empty for now. The back button returns from them to the
-  campaign (to the list or the mindmap that was open), and the app
-  remembers which tab was open
+  mindmaps described below), **Players**, **Notes** (see below) and
+  **NPCs**. Players and NPCs are empty for now. The back button returns
+  from the other tabs to the campaign (to the list or the mindmap that was
+  open), and the app remembers which tab was open
+- **Notes** tab: loose notes for the campaign, each a title and a
+  description, as cards on a board that pans and zooms like the mindmap,
+  without lines between them. Tapping a note's title folds it out right
+  there (and back in), so several can be open at once; which ones are
+  open is remembered on the device. In edit mode, **+ New note** adds one,
+  **✎** on an open note edits its title and description in the card (saved
+  with **Done** or by tapping outside it), **✕** deletes it (with Undo), and
+  dragging a card by its title bar moves it. The description uses the same
+  `**bold**` and links as a node's notes
 - Multiple independent campaigns, one active at a time
 - **Edit / View** switch in the top bar (the highlighted half is the current
   mode). View mode locks everything, for use during a session
@@ -230,6 +239,13 @@ authoritative description is at the top of `store.js`.
   `parentId` pointing at a missing node makes it a root, parent cycles are
   broken, duplicated ids get a fresh id. Unknown extra fields on a node are
   preserved.
+- A node with `"board": "notes"` is a note on the **Notes** tab, not part
+  of the list/mindmaps: `name` is its title, `notes` its description, `x`/`y`
+  its place on the board, and `parentId` is always `null` (loading a file
+  makes sure of that, and a `board` that isn't a non-empty string is
+  dropped). They're in the same `nodes` array so Drive sync, backups and
+  Undo handle them like any node. An older version of the app keeps them
+  when it saves, but shows them as main nodes in the list.
 
 ### Local storage keys
 
@@ -246,3 +262,4 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list; kept while another tab is open) |
 | `rpg-notes-open-tab` | `players`, `notes` or `npcs` while that tab is open (removed on the Campaign tab) |
+| `rpg-notes-board-open-<campaignId>` | Ids of the notes folded out on that campaign's Notes tab |

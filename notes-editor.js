@@ -236,5 +236,6 @@ const NotesEditor = (() => {
     return html;
   }
 
-  return { open };
+  // renderNotes is also used by the Notes tab (notes-board.js)
+  return { open, renderNotes };
 })();
