@@ -1533,11 +1533,7 @@ body.no-campaign #npc-new-btn {
 .player-sum td {
   border-bottom: none;
   color: var(--text-dim);
-  padding: 3px 0;
-}
-
-.player-sum-first td {
-  padding-top: 8px;
+  padding: 8px 0 3px;
 }
 
 .player-sum-total td {
@@ -1569,11 +1565,6 @@ body.no-campaign #npc-new-btn {
 
 .player-gp-input {
   text-align: right;
-}
-
-/* the gold field: as wide as an amount, not the whole form */
-.npc-form-field .player-gp-input {
-  max-width: 12em;
 }
 
 .player-form-item .player-gp-input {

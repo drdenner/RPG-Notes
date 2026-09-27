@@ -12,12 +12,11 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   from the other tabs to the campaign (to the list or the mindmap that was
   open), and the app remembers which tab was open
 - **Players** tab: each player's magic items and wealth, e.g. to hand out
-  treasure fairly. A player has a name, gold, a list of magic items (a
-  title and a value in gp each) and a note; their total is gold + the
-  items' values. One line per player (A-Z) shows their number of items and
-  total, with the party's totals at the top. Tapping a player folds them
-  out to show every item with its value, the items' value, gold, total and
-  the note (**Show all** / **Hide all** does every player). In edit mode,
+  treasure fairly. A player has a name, a list of magic items (a title and
+  a value in gp each) and a note; their total is the items' values added
+  up. One line per player (A-Z) shows their number of items and total,
+  with the party's totals at the top. Tapping a player folds them out to
+  show every item with its value, the total and the note (**Show all** / **Hide all** does every player). In edit mode,
   **+ New player** adds one, **✎** edits an open player right in the list
   (items are added with **+ Add item** and removed with their **✕**; saved
   with **Done** or by tapping outside it), and **✕** deletes a player (with
@@ -272,10 +271,10 @@ authoritative description is at the top of `store.js`.
   = no location) and `note`. `x`/`y` aren't used. A `location`/`note` that
   isn't a string is dropped when loading.
 - `"board": "players"` is a player on the **Players** tab: `name`, `notes`
-  = the note, `gold` (a number, gp) and `items`, a list of
-  `{ "title": string, "value": number }` (gp). Loading a file drops a
-  `gold` that isn't a number and an `items` that isn't a list, leaves out
-  items without a title, and counts an item's missing/invalid value as 0.
+  = the note, and `items`, a list of `{ "title": string, "value": number }`
+  (gp). Loading a file drops an `items` that isn't a list, leaves out items
+  without a title, and counts an item's missing/invalid value as 0. (A
+  `gold` field from an earlier version is kept, but not used.)
   Amounts are kept to the copper (2 decimals).
 
 ### Local storage keys

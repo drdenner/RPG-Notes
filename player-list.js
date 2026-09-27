@@ -2,18 +2,18 @@
 // The Players tab: keeps track of each player's magic items and wealth,
 // e.g. to hand out treasure fairly.
 //
-// - Each player has a name, gold, a list of magic items (a title and a
-//   value in gp each) and a note. Their total = gold + the items' values.
+// - Each player has a name, a list of magic items (a title and a value in
+//   gp each) and a note. Their total = the items' values added up.
 // - The players are nodes with board: 'players' in the campaign's node
-//   list (see store.js): name, gold, items, notes = the note. So they're
+//   list (see store.js): name, items, notes = the note. So they're
 //   per campaign, and go to Drive and backups like the rest.
 // - One line per player (A-Z) with their number of items and total, and the
 //   party's totals at the top. Tapping a player folds them out to show
-//   every item with its value, gold, total and the note; several can be
+//   every item with its value, the total and the note; several can be
 //   open at once, and which ones is remembered per campaign on this
 //   device. "Show all" / "Hide all" folds every player out or in.
 // - Edit mode: "+ New player" adds one, ✎ edits an open player right in
-//   the list (name, gold, items, note), ✕ deletes them (with Undo). The
+//   the list (name, items, note), ✕ deletes them (with Undo). The
 //   edit is saved with Done, or when you tap anywhere outside it.
 
 const PlayerList = (() => {
@@ -81,12 +81,8 @@ const PlayerList = (() => {
     return Array.isArray(player.items) ? player.items : [];
   }
 
-  function itemsValue(player) {
-    return itemsOf(player).reduce((sum, item) => sum + (item.value || 0), 0);
-  }
-
   function totalOf(player) {
-    return (player.gold || 0) + itemsValue(player);
+    return itemsOf(player).reduce((sum, item) => sum + (item.value || 0), 0);
   }
 
   // 1234.5 → "1,234.5 gp"
@@ -180,12 +176,10 @@ const PlayerList = (() => {
         tr.appendChild(el('td', 'npc-text-empty', 'No magic items.'));
         table.appendChild(tr);
       }
-      // items value, gold and total, under the items
-      [['Items', itemsValue(player)], ['Gold', player.gold || 0], ['Total', totalOf(player)]].forEach(([label, amount], i) => {
-        const tr = el('tr', 'player-sum' + (i === 0 ? ' player-sum-first' : '') + (label === 'Total' ? ' player-sum-total' : ''));
-        tr.append(el('td', null, label), el('td', 'player-gp', gp(amount)));
-        table.appendChild(tr);
-      });
+      // the total, under the items
+      const sum = el('tr', 'player-sum player-sum-total');
+      sum.append(el('td', null, 'Total'), el('td', 'player-gp', gp(totalOf(player))));
+      table.appendChild(sum);
       body.appendChild(table);
 
       const note = el('div', 'npc-field player-note');
@@ -204,7 +198,7 @@ const PlayerList = (() => {
 
   function addPlayer() {
     if (!AppMode.isEditMode()) return;
-    const player = Store.addBoardNode(BOARD, 'New player', 0, 0, { gold: 0, items: [] });
+    const player = Store.addBoardNode(BOARD, 'New player', 0, 0, { items: [] });
     if (!player) return;
     openIds.add(player.id);
     saveOpen();
@@ -230,8 +224,7 @@ const PlayerList = (() => {
     return input;
   }
 
-  // the player's row becomes a form: name, gold, the items (a row each),
-  // note
+  // the player's row becomes a form: name, the items (a row each), note
   function startEditing(id, { isNew = false } = {}) {
     if (!AppMode.isEditMode()) return;
     if (editing) finishEditing();
@@ -249,7 +242,6 @@ const PlayerList = (() => {
     const name = field('Name', Object.assign(el('input', 'npc-input'), {
       type: 'text', value: player.name, placeholder: 'e.g. Anna (Thorin, dwarf fighter)'
     }));
-    const gold = field('Gold (gp)', gpInput(player.gold));
 
     // the items: title + value per row, ✕ removes one, "+ Add item" adds one
     const itemsBox = el('div', 'player-form-items');
@@ -287,7 +279,7 @@ const PlayerList = (() => {
     row.innerHTML = '';
     row.classList.add('editing');
     row.appendChild(form);
-    editing = { id, row, fields: { name, gold, itemRows, note } };
+    editing = { id, row, fields: { name, itemRows, note } };
 
     // leaving the form (tapping elsewhere, another tab, ...) saves it
     // (a field that was just removed from the form doesn't count)
@@ -318,7 +310,6 @@ const PlayerList = (() => {
     });
     Store.updateNode(id, {
       name: fields.name.value,
-      gold: parseGp(fields.gold.value),
       items,
       notes: fields.note.value
     });
