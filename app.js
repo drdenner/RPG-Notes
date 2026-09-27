@@ -371,10 +371,21 @@ document.addEventListener('DOMContentLoaded', () => {
     offline: 'Drive: offline'
   };
 
-  // "Saved to Drive 14:32" / "Saving to Drive…" / red "Not saved to Drive",
-  // for the current campaign (see DriveSync.getSaveState)
+  // "Saved to Drive 14:32" / "Saving to Drive…" / red "Not saved to Drive"
+  // for the current campaign (see DriveSync.getSaveState), and the "sign-in
+  // expired" banner - both depend on the Drive status AND on every edit
   const driveSavedEl = document.getElementById('drive-saved');
-  function updateSavedLabel() {
+  let driveStatus = 'disconnected';
+  function updateSaveIndicators() {
+    // the sign-in expired (about once an hour): hard to miss, one tap to
+    // reconnect - a tap, because browsers block Google's sign-in popup otherwise
+    const unsynced = driveStatus === 'reauth' && DriveSync.hasUnsyncedChanges();
+    driveBanner.hidden = driveStatus !== 'reauth';
+    driveBannerText.textContent = unsynced
+      ? 'Google Drive sign-in expired. Your latest changes are saved on this device, but NOT on Google Drive yet.'
+      : 'Google Drive sign-in expired. New changes are saved on this device and uploaded when you reconnect.';
+    driveBanner.classList.toggle('has-unsynced', unsynced);
+
     const state = DriveSync.getSaveState(Store.getCurrentCampaignId());
     driveSavedEl.hidden = !state;
     if (!state) return;
@@ -392,12 +403,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (d.toDateString() === new Date().toDateString()) return time;
     return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time;
   }
-  Store.subscribe(updateSavedLabel);
-  Store.subscribeCampaignChange(updateSavedLabel);
-  setInterval(updateSavedLabel, 60000); // so "14:32" gets its date after midnight
+  Store.subscribe(updateSaveIndicators);
+  Store.subscribeCampaignChange(updateSaveIndicators);
+  setInterval(updateSaveIndicators, 60000); // so "14:32" gets its date after midnight
 
   function updateDriveUI(status, detail) {
-    updateSavedLabel();
+    driveStatus = status;
+    updateSaveIndicators();
     driveDot.className = 'drive-dot drive-dot-' + status;
     driveStatusText.textContent = DRIVE_LABELS[status] || status;
     driveMenuBtn.title = detail || '';
@@ -412,14 +424,6 @@ document.addEventListener('DOMContentLoaded', () => {
     driveSyncBtn.hidden = !isConnectedish;
     driveMenuDanger.hidden = !isConnectedish;
     driveDisconnectBtn.hidden = !isConnectedish;
-
-    // the sign-in expired (about once an hour): hard to miss, one tap to
-    // reconnect - a tap, because browsers block Google's sign-in popup otherwise
-    driveBanner.hidden = status !== 'reauth';
-    driveBannerText.textContent = DriveSync.hasUnsyncedChanges()
-      ? 'Google Drive sign-in expired. Your latest changes are saved on this device, but NOT on Google Drive yet.'
-      : 'Google Drive sign-in expired. New changes are saved on this device and uploaded when you reconnect.';
-    driveBanner.classList.toggle('has-unsynced', DriveSync.hasUnsyncedChanges());
   }
 
   driveConnectBtn.addEventListener('click', () => {

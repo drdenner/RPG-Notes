@@ -7,9 +7,15 @@
 // - Opening the app: index.html is fetched from the network if that
 //   answers within a few seconds (so updates arrive as usual), otherwise
 //   the cached copy is used. Every time a fresh index.html arrives, the
-//   files it links to (with their ?v=N, see README.md) are cached too and
-//   old versions are dropped - so the app is ready to go offline right
-//   after an online visit, and bumping ?v=N is still all an update needs.
+//   files it links to (with their ?v=N, see README.md) and the icons listed
+//   in the manifest are cached too, and old versions are dropped - so the
+//   app is ready to go offline right after an online visit, and bumping
+//   ?v=N is still all an update needs.
+// - That update is all-or-nothing: the new index.html only replaces the
+//   saved one once every file it needs has been saved. If any download
+//   fails (bad wifi, app closed halfway), the old, complete copy stays and
+//   it's tried again on the next visit - so the offline copy can never end
+//   up pointing at a file it doesn't have.
 // - Every other file of the app: from the cache when there, otherwise
 //   from the network (and then cached). Versioned URLs (?v=N) never go
 //   stale, so there's nothing to re-check.
@@ -81,33 +87,42 @@ async function fromCacheOrNetwork(req) {
   return res;
 }
 
-// stores index.html and every local file it links to, and drops cached
-// files it no longer links to (older ?v=N versions)
+// saves every local file index.html links to, plus the icons listed in
+// the manifest; then (only if all of that worked) index.html itself, and
+// drops cached files it no longer links to (older ?v=N versions). Throws,
+// changing nothing that's in use, if any file couldn't be saved.
 async function cacheApp(indexResponse) {
   const html = await indexResponse.clone().text();
   const cache = await caches.open(CACHE);
-  await cache.put(INDEX_URL, indexResponse);
 
   const urls = new Set();
   for (const [, url] of html.matchAll(/(?:href|src)="([^"#]+)"/g)) {
     const absolute = new URL(url, INDEX_URL);
     if (absolute.origin === self.location.origin) urls.add(absolute.href);
   }
-  // the manifest's icons aren't linked from index.html
-  for (const icon of ['icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png']) {
-    urls.add(new URL(icon, INDEX_URL).href);
+  await Promise.all([...urls].map(url => saveFile(cache, url)));
+
+  // the icons aren't linked from index.html, only from the manifest
+  const manifestLink = html.match(/<link rel="manifest" href="([^"]+)"/);
+  if (manifestLink) {
+    const manifestUrl = new URL(manifestLink[1], INDEX_URL).href;
+    const manifest = await (await cache.match(manifestUrl)).json();
+    const icons = (manifest.icons || []).map(icon => new URL(icon.src, manifestUrl).href);
+    icons.forEach(url => urls.add(url));
+    await Promise.all(icons.map(url => saveFile(cache, url)));
   }
 
-  await Promise.all([...urls].map(async url => {
-    if (await cache.match(url)) return;
-    try {
-      const res = await fetch(url);
-      if (res.ok) await cache.put(url, res);
-    } catch (err) { /* fetched again next time */ }
-  }));
-
+  await cache.put(INDEX_URL, indexResponse);
   const keep = new Set([INDEX_URL, ...urls]);
   for (const req of await cache.keys()) {
     if (!keep.has(req.url)) await cache.delete(req);
   }
+}
+
+// a file the app needs, unless it's saved already (?v=N URLs never change)
+async function saveFile(cache, url) {
+  if (await cache.match(url)) return;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(url + ': HTTP ' + res.status);
+  await cache.put(url, res);
 }

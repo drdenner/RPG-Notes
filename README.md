@@ -58,11 +58,13 @@ Serve the folder as static files, e.g. via GitHub Pages or any local web
 server. Opening `index.html` directly (`file://`) works for local use, but
 Google Drive sync needs `https://` or `http://localhost` (see below).
 
-Every local `.js`/`.css` file is included in `index.html` with a `?v=N`
-query string. **After changing a file, bump its number**, so browsers and
-GitHub Pages' CDN fetch the new version instead of a cached copy. The same
-goes for the offline copy (below): it's keyed by those URLs, so bumping the
-number is all an update needs there too.
+Every local file is included with a `?v=N` query string: the `.js`/`.css`
+files, the manifest and the apple-touch icon in `index.html`, and the app
+icons inside `manifest.webmanifest`. **After changing a file, bump its
+number**, so browsers and GitHub Pages' CDN fetch the new version instead of
+a cached copy. The same goes for the offline copy (below): it's keyed by
+those URLs, so bumping the number is all an update needs there too - but a
+file whose number *isn't* bumped is never fetched again.
 
 ## Offline and on a tablet
 
@@ -71,7 +73,11 @@ number is all an update needs there too.
 app's own files in the browser. After that the app starts and works without
 internet, e.g. at the table with no wifi. When online, it still checks for
 a new version each time it's opened (waiting at most 3 seconds before using
-the saved copy), so updates arrive as usual.
+the saved copy), so updates arrive as usual. An update is saved
+all-or-nothing: only once every file of the new version has been
+downloaded does it replace the saved copy, so a download that fails
+halfway (bad wifi, app closed) can't leave the offline copy broken - the
+old version stays and it's tried again next time.
 
 - **Check before going offline:** the **⋯** menu next to the campaign says
   "✓ Ready to use without internet", or why not.
@@ -231,7 +237,6 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-edit-mode` | `"true"` / `"false"` |
 | `rpg-notes-collapsed-<campaignId>` | Ids of the nodes collapsed in the List |
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
-| `rpg-notes-drive-unsynced` | Ids of campaigns with changes that haven't reached Drive yet |
-| `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version |
+| `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version. A campaign whose current `updatedAt` differs has changes Drive doesn't have |
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |

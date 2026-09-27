@@ -34,16 +34,17 @@
 // When the Google sign-in expires (after about an hour), the status shows
 // "sign in again" and the user clicks Connect. Nothing is lost meanwhile:
 // local edits are stamped with updatedAt, so the next sync uploads them.
-// To know which campaigns those are, every local edit marks its campaign
-// as "unsynced" (saved in localStorage, so it survives a reload) until
-// that version has reached Drive - reconnecting syncs all of them, and
-// hasUnsyncedChanges() lets the UI warn that Drive is behind.
+// To know which campaigns those are, each campaign's version (updatedAt)
+// that last reached Drive is remembered (savedVersions, in localStorage so
+// it survives a reload): a campaign whose version differs is "unsynced".
+// Reconnecting syncs all of those; getSaveState() and hasUnsyncedChanges()
+// let the UI show whether Drive is behind.
 //
 // Without internet the status is "offline" (not an error): edits are
-// saved on the device and marked unsynced as usual, and when the browser
-// reports it's back online, everything unsynced is synced automatically.
-// If the app was started offline, Google's sign-in library couldn't load -
-// it's loaded then instead. Google's sign-in window is never opened without
+// saved on the device as usual, and when the browser reports it's back
+// online, everything unsynced is synced automatically. Google's sign-in
+// library is loaded from here (not from index.html) once the app starts,
+// or when the connection is back if it started offline. Google's sign-in window is never opened without
 // a connection: it can't load then, and on a tablet it would cover the app
 // with an error page.
 //
@@ -59,11 +60,13 @@ const DriveSync = (() => {
   const FOLDER_NAME = 'RPG Notes'; // the Drive folder every campaign's file lives in
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const CONNECTED_KEY = 'rpg-notes-drive-connected'; // set on connect, cleared by Disconnect
-  const UNSYNCED_KEY = 'rpg-notes-drive-unsynced'; // ids of campaigns with edits not on Drive yet
   const SAVED_KEY = 'rpg-notes-drive-saved'; // { campaignId: { at, version } } - when each campaign last reached Drive
   const RENAMES_KEY = 'rpg-notes-drive-renames'; // { campaignId: name its Drive file still has } for renames not done there yet
   const UPLOAD_DEBOUNCE_MS = 10000;
-  const GIS_URL = 'https://accounts.google.com/gsi/client'; // Google's sign-in library (also in index.html)
+  const GIS_URL = 'https://accounts.google.com/gsi/client'; // Google's sign-in library
+
+  // kept by earlier versions of the app - now derived from savedVersions
+  localStorage.removeItem('rpg-notes-drive-unsynced');
 
   function fileNameFor(campaignName) { return `${Store.sanitizeFileName(campaignName)}.json`; }
   function campaignNameOf(fileName) { return fileName.slice(0, -'.json'.length); }
@@ -94,42 +97,29 @@ const DriveSync = (() => {
     statusCallback(lastStatus, lastDetail);
   }
 
-  // --- campaigns with local edits that aren't on Drive yet ---
+  // --- which version of each campaign Drive has ---
 
-  const unsyncedIds = new Set(readUnsynced());
-
-  function readUnsynced() {
-    try {
-      const ids = JSON.parse(localStorage.getItem(UNSYNCED_KEY) || '[]');
-      return Array.isArray(ids) ? ids : [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-  // saves the set, and re-sends the status when it goes from empty to
-  // non-empty or back, so the UI can update its warning
-  function updateUnsynced(fn) {
-    const had = hasUnsyncedChanges();
-    fn();
-    try { localStorage.setItem(UNSYNCED_KEY, JSON.stringify([...unsyncedIds])); } catch (e) { /* ignore */ }
-    if (had !== hasUnsyncedChanges()) statusCallback(lastStatus, lastDetail);
-  }
+  // { campaignId: { at, version } }: `version` (the campaign's updatedAt)
+  // last reached Drive (or came from it) at `at`
+  const savedVersions = readSavedVersions();
 
   // `updatedAt` is the campaign's version that just reached Drive (or came
-  // from it) - if it has been edited again since, it stays unsynced. Also
-  // records when that happened, for getSaveState.
+  // from it) - if the campaign has been edited again since, it's still
+  // unsynced
   function markSynced(campaignId, updatedAt) {
     savedVersions[campaignId] = { at: new Date().toISOString(), version: updatedAt };
-    try { localStorage.setItem(SAVED_KEY, JSON.stringify(savedVersions)); } catch (e) { /* ignore */ }
-    if (unsyncedIds.has(campaignId) && Store.getUpdatedAt(campaignId) === updatedAt) {
-      updateUnsynced(() => unsyncedIds.delete(campaignId));
-    }
+    saveSavedVersions();
   }
 
-  // --- "Saved to Drive 14:32" next to the Drive button ---
+  function saveSavedVersions() {
+    try { localStorage.setItem(SAVED_KEY, JSON.stringify(savedVersions)); } catch (e) { /* ignore */ }
+  }
 
-  const savedVersions = readSavedVersions();
+  // does this device have changes (or a whole campaign) Drive doesn't?
+  function isUnsynced(campaignId) {
+    const saved = savedVersions[campaignId];
+    return !saved || saved.version !== Store.getUpdatedAt(campaignId);
+  }
 
   // (entries of campaigns that are no longer on this device are dropped)
   function readSavedVersions() {
@@ -152,14 +142,14 @@ const DriveSync = (() => {
     if (!campaignId) return null;
     const saved = savedVersions[campaignId];
     if (!saved && !localStorage.getItem(CONNECTED_KEY)) return null;
-    const inSync = !!saved && saved.version === Store.getUpdatedAt(campaignId);
+    const inSync = !isUnsynced(campaignId);
     const saving = !inSync && !!accessToken && (!!uploadTimer || lastStatus === 'syncing' || lastStatus === 'connecting');
     return { savedAt: saved ? saved.at : null, inSync, saving };
   }
 
+  // any campaign on this device (for the "sign-in expired" warning)
   function hasUnsyncedChanges() {
-    const ids = new Set(Store.listCampaigns().map(c => c.id));
-    return [...unsyncedIds].some(id => ids.has(id));
+    return Store.listCampaigns().some(c => isUnsynced(c.id));
   }
 
   // --- renames that haven't reached Drive yet ---
@@ -275,7 +265,7 @@ const DriveSync = (() => {
       setStatus('unconfigured');
       return;
     }
-    waitForGis(setUpTokenClient);
+    loadGis();
   }
 
   function setUpTokenClient() {
@@ -315,22 +305,23 @@ const DriveSync = (() => {
     }
   }
 
-  function waitForGis(cb, attempts = 0) {
-    if (window.google && google.accounts && google.accounts.oauth2) { cb(); return; }
-    if (attempts > 50) {
-      // most likely started without internet - loaded again when back online
-      setStatus(navigator.onLine ? 'error' : 'offline', 'Could not load Google\'s sign-in library');
-      return;
-    }
-    setTimeout(() => waitForGis(cb, attempts + 1), 100);
-  }
-
+  // loads Google's sign-in library, then sets up the sign-in. Without
+  // internet it fails, and is tried again when the connection is back.
+  let gisLoading = false;
   function loadGis() {
+    if (window.google && google.accounts && google.accounts.oauth2) { setUpTokenClient(); return; }
+    if (gisLoading) return;
+    gisLoading = true;
     const script = document.createElement('script');
     script.src = GIS_URL;
     script.async = true;
+    script.onload = () => { gisLoading = false; setUpTokenClient(); };
+    script.onerror = () => {
+      gisLoading = false;
+      script.remove();
+      setStatus(navigator.onLine ? 'error' : 'offline', 'Could not load Google\'s sign-in library');
+    };
     document.head.appendChild(script);
-    waitForGis(setUpTokenClient);
   }
 
   window.addEventListener('offline', () => {
@@ -408,7 +399,7 @@ const DriveSync = (() => {
       }
       // other campaigns edited while the sign-in had expired
       for (const campaign of Store.listCampaigns()) {
-        if (!unsyncedIds.has(campaign.id) || campaign.id === syncedCampaignId) continue;
+        if (!isUnsynced(campaign.id) || campaign.id === syncedCampaignId) continue;
         try {
           await syncCampaign(campaign.id, campaign.name, await findFile(fileNameFor(campaign.name)));
         } catch (err) {
@@ -510,7 +501,8 @@ const DriveSync = (() => {
       for (const f of files) {
         if (localFileNames.has(f.name)) continue;
         try {
-          Store.addCampaignFromData(campaignNameOf(f.name), parseOrNull(await downloadFile(f.id)));
+          const id = Store.addCampaignFromData(campaignNameOf(f.name), parseOrNull(await downloadFile(f.id)));
+          markSynced(id, Store.getUpdatedAt(id));
           added++;
         } catch (err) {
           if (err.reauth) throw err;
@@ -547,7 +539,9 @@ const DriveSync = (() => {
         entries.push({ name: campaignNameOf(f.name), data: parseOrNull(await downloadFile(f.id)) });
       }
       const result = Store.replaceAllCampaigns(entries);
-      updateUnsynced(() => unsyncedIds.clear());
+      // every campaign here is now exactly what's on Drive (with new ids)
+      Object.keys(savedVersions).forEach(id => delete savedVersions[id]);
+      Store.listCampaigns().forEach(c => markSynced(c.id, Store.getUpdatedAt(c.id)));
       fileId = null;
       setRemoteFileNames(files.map(f => f.name));
       setStatus('connected');
@@ -575,6 +569,7 @@ const DriveSync = (() => {
         } catch (err) {
           throw unreadableError(name, err.message);
         }
+        markSynced(campaignId, Store.getUpdatedAt(campaignId));
         setStatus('connected');
         return campaignId;
       } catch (err) {
@@ -633,15 +628,9 @@ const DriveSync = (() => {
 
   // uploads the current campaign a short while after the last change.
   // Data that came from outside (Drive, or another tab - which uploads it
-  // itself) isn't uploaded back. While Drive is in use (even with an
-  // expired sign-in), every edit marks its campaign unsynced until it has
-  // been uploaded.
+  // itself) isn't uploaded back.
   Store.subscribe(change => {
     if (change.external) return;
-    const campaignId = Store.getCurrentCampaignId();
-    if (localStorage.getItem(CONNECTED_KEY) && campaignId && !unsyncedIds.has(campaignId)) {
-      updateUnsynced(() => unsyncedIds.add(campaignId));
-    }
     if (!accessToken || !fileId) return;
     clearTimeout(uploadTimer);
     uploadTimer = setTimeout(() => {
@@ -706,7 +695,8 @@ const DriveSync = (() => {
 
   // moves a deleted campaign's file to Drive's trash (recoverable there)
   Store.subscribeCampaignDeleted((campaignId, campaignName) => {
-    if (unsyncedIds.has(campaignId)) updateUnsynced(() => unsyncedIds.delete(campaignId));
+    delete savedVersions[campaignId];
+    saveSavedVersions();
     // a rename that never reached Drive: the file still has the old name
     const fileName = fileNameFor(pendingRenames[campaignId] || campaignName);
     delete pendingRenames[campaignId];

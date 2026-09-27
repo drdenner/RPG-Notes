@@ -6,15 +6,17 @@
 <title>RPG Notes</title>
 <!-- installable app ("Add to Home Screen"): runs full screen, and works
      offline thanks to sw.js -->
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.webmanifest?v=1">
 <meta name="theme-color" content="#1d1712">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="RPG Notes">
 <!--
-  Cache-busting: every local file below is loaded with a ?v=N query string.
+  Cache-busting: every local file below is loaded with a ?v=N query string
+  (the manifest and the icons too - the icons' numbers are inside
+  manifest.webmanifest).
   Browsers (and GitHub Pages' CDN) cache these aggressively by URL, so after
   editing ANY .js or .css file, bump this number (e.g. v=2 -> v=3) so the
   browser sees a "new" URL and fetches the updated file instead of serving
@@ -24,7 +26,6 @@
   bumping the number is all an update needs there too.)
 -->
 <link rel="stylesheet" href="style.css?v=19">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -112,9 +113,9 @@
   <script src="store.js?v=18"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=6"></script>
-  <script src="drive-sync.js?v=26"></script>
+  <script src="drive-sync.js?v=27"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>
