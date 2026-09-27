@@ -31,6 +31,10 @@
 // When the Google sign-in expires (after about an hour), the status shows
 // "sign in again" and the user clicks Connect. Nothing is lost meanwhile:
 // local edits are stamped with updatedAt, so the next sync uploads them.
+// To know which campaigns those are, every local edit marks its campaign
+// as "unsynced" (saved in localStorage, so it survives a reload) until
+// that version has reached Drive - reconnecting syncs all of them, and
+// hasUnsyncedChanges() lets the UI warn that Drive is behind.
 //
 // ONE-TIME SETUP: see "Google Drive sync" in README.md for how to get a
 // Google OAuth Client ID - it goes into CLIENT_ID below.
@@ -44,11 +48,12 @@ const DriveSync = (() => {
   const FOLDER_NAME = 'RPG Notes'; // the Drive folder every campaign's file lives in
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const CONNECTED_KEY = 'rpg-notes-drive-connected'; // set on connect, cleared by Disconnect
+  const UNSYNCED_KEY = 'rpg-notes-drive-unsynced'; // ids of campaigns with edits not on Drive yet
   const UPLOAD_DEBOUNCE_MS = 10000;
 
   // state kept by older versions of this file - no longer used
   Object.keys(localStorage)
-    .filter(k => k.startsWith('rpg-notes-drive-') && k !== CONNECTED_KEY)
+    .filter(k => k.startsWith('rpg-notes-drive-') && k !== CONNECTED_KEY && k !== UNSYNCED_KEY)
     .forEach(k => localStorage.removeItem(k));
 
   function fileNameFor(campaignName) { return `${Store.sanitizeFileName(campaignName)}.json`; }
@@ -63,6 +68,8 @@ const DriveSync = (() => {
   let syncQueue = Promise.resolve();
   let uploadTimer = null;
   let statusCallback = () => {};
+  let lastStatus = 'disconnected';
+  let lastDetail = '';
   // file names of every campaign on Drive, as of the last listing (empty
   // while not connected) - see getDriveOnlyCampaigns
   let remoteFileNames = [];
@@ -73,7 +80,44 @@ const DriveSync = (() => {
   }
 
   function setStatus(status, detail) {
-    statusCallback(status, detail || '');
+    lastStatus = status;
+    lastDetail = detail || '';
+    statusCallback(lastStatus, lastDetail);
+  }
+
+  // --- campaigns with local edits that aren't on Drive yet ---
+
+  const unsyncedIds = new Set(readUnsynced());
+
+  function readUnsynced() {
+    try {
+      const ids = JSON.parse(localStorage.getItem(UNSYNCED_KEY) || '[]');
+      return Array.isArray(ids) ? ids : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // saves the set, and re-sends the status when it goes from empty to
+  // non-empty or back, so the UI can update its warning
+  function updateUnsynced(fn) {
+    const had = hasUnsyncedChanges();
+    fn();
+    try { localStorage.setItem(UNSYNCED_KEY, JSON.stringify([...unsyncedIds])); } catch (e) { /* ignore */ }
+    if (had !== hasUnsyncedChanges()) statusCallback(lastStatus, lastDetail);
+  }
+
+  // `updatedAt` is the campaign's version that just reached Drive (or came
+  // from it) - if it has been edited again since, it stays unsynced
+  function markSynced(campaignId, updatedAt) {
+    if (unsyncedIds.has(campaignId) && Store.getUpdatedAt(campaignId) === updatedAt) {
+      updateUnsynced(() => unsyncedIds.delete(campaignId));
+    }
+  }
+
+  function hasUnsyncedChanges() {
+    const ids = new Set(Store.listCampaigns().map(c => c.id));
+    return [...unsyncedIds].some(id => ids.has(id));
   }
 
   // --- campaigns that are on Drive but not on this device ---
@@ -190,6 +234,15 @@ const DriveSync = (() => {
         const found = await findFile(fileNameFor(syncedCampaignName));
         fileId = await syncCampaign(syncedCampaignId, syncedCampaignName, found);
       }
+      // other campaigns edited while the sign-in had expired
+      for (const campaign of Store.listCampaigns()) {
+        if (!unsyncedIds.has(campaign.id) || campaign.id === syncedCampaignId) continue;
+        try {
+          await syncCampaign(campaign.id, campaign.name, await findFile(fileNameFor(campaign.name)));
+        } catch (err) {
+          if (!err.unreadable) throw err; // an unreadable file is reported by "Sync now"
+        }
+      }
       await refreshRemoteList();
       setStatus('connected');
     } catch (err) {
@@ -204,16 +257,24 @@ const DriveSync = (() => {
   // Returns the file id. An unreadable file is never overwritten - that
   // throws an error with `unreadable` set instead.
   async function syncCampaign(campaignId, campaignName, id) {
-    if (!id) return createFile(fileNameFor(campaignName), Store.exportJSON(campaignId));
+    let uploadedAt = Store.getUpdatedAt(campaignId);
+    if (!id) {
+      const newId = await createFile(fileNameFor(campaignName), Store.exportJSON(campaignId));
+      markSynced(campaignId, uploadedAt);
+      return newId;
+    }
     const text = await downloadFile(id);
     if (!text.trim()) {
+      uploadedAt = Store.getUpdatedAt(campaignId);
       await uploadFile(id, Store.exportJSON(campaignId));
+      markSynced(campaignId, uploadedAt);
       return id;
     }
     const data = parseOrNull(text);
     if (!data) throw unreadableError(campaignName, 'not valid JSON');
     const remoteTime = typeof data.updatedAt === 'string' ? data.updatedAt : '';
     const localTime = Store.getUpdatedAt(campaignId) || '';
+    uploadedAt = Store.getUpdatedAt(campaignId);
     if (localTime > remoteTime) {
       await uploadFile(id, Store.exportJSON(campaignId));
     } else if (remoteTime > localTime || !localTime) {
@@ -222,7 +283,9 @@ const DriveSync = (() => {
       } catch (err) {
         throw unreadableError(campaignName, err.message);
       }
+      uploadedAt = Store.getUpdatedAt(campaignId); // Drive's version, now local
     }
+    markSynced(campaignId, uploadedAt); // (equal timestamps: already in sync)
     return id;
   }
 
@@ -308,6 +371,7 @@ const DriveSync = (() => {
         entries.push({ name: campaignNameOf(f.name), data: parseOrNull(await downloadFile(f.id)) });
       }
       const result = Store.replaceAllCampaigns(entries);
+      updateUnsynced(() => unsyncedIds.clear());
       fileId = null;
       setRemoteFileNames(files.map(f => f.name));
       setStatus('connected');
@@ -383,14 +447,23 @@ const DriveSync = (() => {
   function push({ keepalive = false } = {}) {
     if (!accessToken || !fileId) return Promise.resolve();
     setStatus('syncing');
-    return uploadFile(fileId, Store.exportJSON(syncedCampaignId), { keepalive })
-      .then(() => setStatus('connected'), reportError);
+    const campaignId = syncedCampaignId;
+    const uploadedAt = Store.getUpdatedAt(campaignId);
+    return uploadFile(fileId, Store.exportJSON(campaignId), { keepalive })
+      .then(() => { markSynced(campaignId, uploadedAt); setStatus('connected'); }, reportError);
   }
 
   // uploads the current campaign a short while after the last change.
-  // Changes that came FROM Drive (a pull) aren't uploaded back.
+  // Changes that came FROM Drive (a pull) aren't uploaded back. While Drive
+  // is in use (even with an expired sign-in), every edit marks its
+  // campaign unsynced until it has been uploaded.
   Store.subscribe(change => {
-    if (change.fromDrive || !accessToken || !fileId) return;
+    if (change.fromDrive) return;
+    const campaignId = Store.getCurrentCampaignId();
+    if (localStorage.getItem(CONNECTED_KEY) && campaignId && !unsyncedIds.has(campaignId)) {
+      updateUnsynced(() => unsyncedIds.add(campaignId));
+    }
+    if (!accessToken || !fileId) return;
     clearTimeout(uploadTimer);
     uploadTimer = setTimeout(() => {
       uploadTimer = null;
@@ -454,6 +527,7 @@ const DriveSync = (() => {
 
   // moves a deleted campaign's file to Drive's trash (recoverable there)
   Store.subscribeCampaignDeleted((campaignId, campaignName) => {
+    if (unsyncedIds.has(campaignId)) updateUnsynced(() => unsyncedIds.delete(campaignId));
     queueSync(async () => {
       if (!accessToken) return;
       try {
@@ -587,7 +661,7 @@ const DriveSync = (() => {
   }
 
   return {
-    init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured,
+    init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured, hasUnsyncedChanges,
     subscribeRemoteCampaigns, getDriveOnlyCampaigns, downloadCampaign, removeFromDevice
   };
 })();

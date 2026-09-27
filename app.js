@@ -226,6 +226,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const driveSyncBtn = document.getElementById('drive-sync-btn');
   const drivePullBtn = document.getElementById('drive-pull-btn');
   const driveDisconnectBtn = document.getElementById('drive-disconnect-btn');
+  const driveBanner = document.getElementById('drive-banner');
+  const driveBannerText = document.getElementById('drive-banner-text');
 
   const DRIVE_LABELS = {
     unconfigured: 'Drive: not set up',
@@ -251,6 +253,14 @@ document.addEventListener('DOMContentLoaded', () => {
     driveSyncBtn.hidden = !isConnectedish;
     drivePullBtn.hidden = !isConnectedish;
     driveDisconnectBtn.hidden = !isConnectedish;
+
+    // the sign-in expired (about once an hour): hard to miss, one tap to
+    // reconnect - a tap, because browsers block Google's sign-in popup otherwise
+    driveBanner.hidden = status !== 'reauth';
+    driveBannerText.textContent = DriveSync.hasUnsyncedChanges()
+      ? 'Google Drive sign-in expired. Your latest changes are saved on this device, but NOT on Google Drive yet.'
+      : 'Google Drive sign-in expired. New changes are saved on this device and uploaded when you reconnect.';
+    driveBanner.classList.toggle('has-unsynced', DriveSync.hasUnsyncedChanges());
   }
 
   driveConnectBtn.addEventListener('click', () => {
@@ -276,6 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
     driveSyncBtn.disabled = false;
   });
   driveDisconnectBtn.addEventListener('click', () => DriveSync.disconnect());
+  document.getElementById('drive-banner-btn').addEventListener('click', () => DriveSync.connect());
 
   drivePullBtn.addEventListener('click', async () => {
     const ok = confirm(

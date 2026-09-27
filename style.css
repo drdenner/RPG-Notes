@@ -113,6 +113,33 @@ body {
 .drive-dot-error,
 .drive-dot-reauth { background: var(--accent-red-bright); }
 
+/* --- "Drive sign-in expired" banner, between the topbar and the views --- */
+
+.drive-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--accent-gold);
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.drive-banner[hidden] {
+  display: none;
+}
+
+.drive-banner span {
+  flex: 1;
+}
+
+/* there are edits that only exist on this device */
+.drive-banner.has-unsynced {
+  border-bottom-color: var(--accent-red-bright);
+  background: rgba(154, 68, 68, 0.25);
+}
+
 /* --- view mode: hide everything destructive/editable, keep expand/collapse,
    zoom and panning (which don't change anything) --- */
 

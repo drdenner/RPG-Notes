@@ -12,7 +12,7 @@
   a stale cached copy. Hard refresh (Ctrl+Shift+R) still works too, but this
   means regular visits pick up updates without needing one.
 -->
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -37,6 +37,11 @@
       <button id="drive-disconnect-btn" class="btn" hidden>Disconnect Drive</button>
     </div>
   </header>
+
+  <div id="drive-banner" class="drive-banner" hidden>
+    <span id="drive-banner-text"></span>
+    <button id="drive-banner-btn" class="btn btn-primary">Reconnect</button>
+  </div>
 
   <main class="app-main">
     <p class="no-campaign-msg">No campaigns on this device. Create one with <strong>+</strong>, or connect Google Drive and pick a ☁ campaign from the list.</p>
@@ -64,9 +69,9 @@
   <script src="store.js?v=15"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=5"></script>
-  <script src="drive-sync.js?v=21"></script>
+  <script src="drive-sync.js?v=22"></script>
   <script src="tree-view.js?v=4"></script>
   <script src="mindmap-view.js?v=9"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

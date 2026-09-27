@@ -98,9 +98,12 @@ files it created itself, never the rest of your Drive.
   campaigns. Connect Drive and pick a **☁** campaign from the dropdown (or
   press **Sync now** / **Pull from Drive** to get them all), or create one
   with **+**.
-- The Google sign-in lasts about an hour. When it expires, the status shows
-  **Drive: sign in again**. Click **Connect Drive** to continue. Changes made
-  meanwhile are uploaded at the next sync, since they're newer.
+- The Google sign-in lasts about an hour (a browser-only app can't renew it
+  in the background). When it expires, a banner below the top bar says so,
+  and turns red if there are changes that aren't on Drive yet. Tap
+  **Reconnect** to continue. Changes made meanwhile are saved on the device,
+  and reconnecting uploads every campaign that was edited in the meantime,
+  not just the current one.
 - **Disconnect Drive** uploads any pending change first, and the app won't
   reconnect automatically until you click **Connect Drive** again.
 
@@ -154,4 +157,5 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-updated-<campaignId>` | When that campaign last changed (ISO timestamp) |
 | `rpg-notes-edit-mode` | `"true"` / `"false"` |
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
+| `rpg-notes-drive-unsynced` | Ids of campaigns with changes that haven't reached Drive yet |
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |
