@@ -72,13 +72,19 @@ the saved copy), so updates arrive as usual.
   keeps the app itself available.
 - Without internet, Drive shows **Drive: offline**. Changes are saved on the
   device and synced automatically when the connection is back.
-- **Install it:** in the browser's menu, choose **Add to Home Screen** /
-  **Install app**. It then opens full screen like an app (icons are in
-  `icons/`, settings in `manifest.webmanifest`). On an iPad this also
-  matters for keeping the data: Safari may clear a website's storage after
-  7 days without use, but not an installed app's.
+- **Install it (Android, Chrome):** open the app's address, then the **⋮**
+  menu → **Install app** (or **Add to Home screen**). It then opens from its
+  own icon, full screen without the address bar (icons are in `icons/`,
+  settings in `manifest.webmanifest`). Open it online once after installing,
+  so the offline copy is saved.
 - The app asks the browser to keep its storage permanently
-  (`navigator.storage.persist()`), so it isn't cleared when space runs low.
+  (`navigator.storage.persist()`), so Chrome doesn't clear the notes when
+  the device runs low on space. Chrome grants this readily for an installed
+  app.
+- (On iPhone/iPad, Safari's **Share → Add to Home Screen** works too; the
+  `apple-*` tags in `index.html` are for that. Installing matters more
+  there, since Safari may clear a website's storage after 7 days without
+  use.)
 
 ## Google Drive sync
 
