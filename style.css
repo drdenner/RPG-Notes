@@ -975,14 +975,7 @@ body.no-campaign #tree-new-root-btn {
   font-style: italic;
 }
 
-/* --- the Players, Notes and NPCs tabs (empty for now) --- */
-
-.tab-empty {
-  margin: auto;
-  padding: 20px;
-  color: var(--text-dim);
-  font-style: italic;
-}
+/* --- the Players, Notes and NPCs tabs --- */
 
 /* "No campaigns on this device" belongs to the Campaign tab */
 body.other-tab .no-campaign-msg {
@@ -1399,5 +1392,209 @@ body.view-mode .npc-del,
 body.view-mode .npc-group-add,
 body.view-mode #npc-new-btn,
 body.no-campaign #npc-new-btn {
+  display: none !important;
+}
+
+/* --- Players tab: magic items and wealth per player (player-list.js).
+   Reuses the NPC tab's layout, labels and edit form (.npc-*) --- */
+
+.player-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* the party's totals */
+.player-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 18px;
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.player-summary[hidden],
+#player-toggle-all-btn[hidden] {
+  display: none;
+}
+
+.player-summary-label {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.1rem;
+  color: var(--accent-gold-bright);
+}
+
+.player-summary-value {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.player-summary-total {
+  margin-left: auto;
+  color: var(--text-main);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.player {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.player.open {
+  background: rgba(201, 162, 91, 0.06);
+  border-radius: 6px;
+}
+
+.player-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* name · number of items · total - the columns line up from player to player */
+.player-toggle {
+  display: grid;
+  grid-template-columns: 12px 1fr auto 9em;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 6px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-main);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.player-toggle:hover {
+  background: var(--bg-elevated);
+}
+
+.player-name {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.player-count {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.player-total,
+.player-gp {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-total {
+  font-weight: 600;
+  color: var(--accent-gold-bright);
+}
+
+.player-body {
+  padding: 0 12px 12px 34px;
+}
+
+.player-items {
+  width: 100%;
+  max-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.player-items td {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+
+.player-items td + td {
+  padding-left: 16px;
+}
+
+.player-sum td {
+  border-bottom: none;
+  color: var(--text-dim);
+  padding: 3px 0;
+}
+
+.player-sum-first td {
+  padding-top: 8px;
+}
+
+.player-sum-total td {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.player-note {
+  margin-top: 12px;
+}
+
+/* editing: one row per item - title, value, ✕ */
+.player-form-item-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.player-form-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-form-item .npc-input:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.player-gp-input {
+  text-align: right;
+}
+
+/* the gold field: as wide as an amount, not the whole form */
+.npc-form-field .player-gp-input {
+  max-width: 12em;
+}
+
+.player-form-item .player-gp-input {
+  width: 7.5em;
+  flex-shrink: 0;
+}
+
+.player-gp-unit {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.player-add-item {
+  margin-top: 8px;
+  padding: 7px 14px;
+  font-size: 0.85rem;
+}
+
+body.view-mode .player-edit,
+body.view-mode .player-del,
+body.view-mode #player-new-btn,
+body.no-campaign #player-new-btn {
   display: none !important;
 }

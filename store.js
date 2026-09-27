@@ -63,6 +63,11 @@
 //     the NPC's name, notes the description, and two more string fields,
 //     "location" (the list is grouped by it; "" = no location) and "note".
 //     x/y aren't used there.
+//   - "board": "players" is a player on the Players tab (see
+//     player-list.js): name, notes = the note, "gold" (a number, gp) and
+//     "items": [{ "title": string, "value": number (gp) }, ...], the
+//     player's magic items. Their total wealth = gold + the items' values.
+//     x/y aren't used there.
 //
 // normalizeNodes() repairs incoming nodes defensively (missing
 // fields get sane defaults, a parentId pointing at a non-existent node
@@ -391,9 +396,30 @@ const Store = (() => {
   // set through addBoardNode/updateNode
   const BOARD_TEXT_FIELDS = ['location', 'note'];
 
+  // players' gold: a finite number of gp, to the copper; anything else is
+  // no value (undefined)
+  function cleanGold(value) {
+    return typeof value === 'number' && isFinite(value) ? Math.round(value * 100) / 100 : undefined;
+  }
+
+  // players' items: [{ title, value }] - items without a title are
+  // dropped, a missing/invalid value counts as 0, other fields an item has
+  // are kept. Anything that isn't a list is no value (undefined)
+  function cleanItems(value) {
+    if (!Array.isArray(value)) return undefined;
+    return value
+      .filter(item => item && typeof item === 'object')
+      .map(item => ({
+        ...item,
+        title: typeof item.title === 'string' ? item.title.trim() : '',
+        value: cleanGold(item.value) || 0
+      }))
+      .filter(item => item.title);
+  }
+
   // a new node on a board (e.g. 'notes'), at x/y, with any of
-  // BOARD_TEXT_FIELDS from `fields`; returns null (and does nothing) if
-  // there is no campaign to add it to
+  // BOARD_TEXT_FIELDS, gold and items from `fields`; returns null (and
+  // does nothing) if there is no campaign to add it to
   function addBoardNode(board, name, x, y, fields = {}) {
     if (!currentCampaignId) return null;
     const node = {
@@ -408,6 +434,8 @@ const Store = (() => {
     BOARD_TEXT_FIELDS.forEach(key => {
       if (typeof fields[key] === 'string') node[key] = key === 'location' ? fields[key].trim() : fields[key];
     });
+    if (cleanGold(fields.gold) !== undefined) node.gold = cleanGold(fields.gold);
+    if (cleanItems(fields.items)) node.items = cleanItems(fields.items);
     nodes.push(node);
     notify();
     return { ...node };
@@ -454,8 +482,8 @@ const Store = (() => {
   // applies several changes to one node as ONE mutation (one save, one
   // render, one Drive sync scheduled) - e.g. name + notes from the editor,
   // or position + new parent from a mindmap drag. `patch` may contain any
-  // of name, notes, x, y, parentId (and, on a board node, location and
-  // note); each is validated on its own, and an
+  // of name, notes, x, y, parentId (and, on a board node, location, note,
+  // gold and items); each is validated on its own, and an
   // invalid one (e.g. a parentId that would create a cycle) is skipped
   // while the rest of the patch still applies
   function updateNode(id, patch) {
@@ -481,6 +509,14 @@ const Store = (() => {
         if (key === 'location') value = value.trim();
         if (value !== (node[key] || '')) { node[key] = value; changed = true; }
       });
+      if ('gold' in patch) {
+        const gold = cleanGold(patch.gold) || 0;
+        if (gold !== (node.gold || 0)) { node.gold = gold; changed = true; }
+      }
+      if ('items' in patch) {
+        const items = cleanItems(patch.items) || [];
+        if (JSON.stringify(items) !== JSON.stringify(node.items || [])) { node.items = items; changed = true; }
+      }
     }
     ['x', 'y'].forEach(key => {
       if (typeof patch[key] === 'number' && isFinite(patch[key]) && patch[key] !== node[key]) {
@@ -663,6 +699,14 @@ const Store = (() => {
       };
       if ('board' in node && !onBoard(node)) delete node.board;
       BOARD_TEXT_FIELDS.forEach(key => { if (key in node && typeof node[key] !== 'string') delete node[key]; });
+      if ('gold' in node) {
+        if (cleanGold(node.gold) === undefined) delete node.gold;
+        else node.gold = cleanGold(node.gold);
+      }
+      if ('items' in node) {
+        if (cleanItems(node.items)) node.items = cleanItems(node.items);
+        else delete node.items;
+      }
       return node;
     });
 

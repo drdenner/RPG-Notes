@@ -8,9 +8,20 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 
 - Tabs at the left of the top bar: **Campaign** (the list and the
   mindmaps described below), **Players**, **Notes** and **NPCs** (see
-  below). Players is empty for now. The back button returns
+  below). The back button returns
   from the other tabs to the campaign (to the list or the mindmap that was
   open), and the app remembers which tab was open
+- **Players** tab: each player's magic items and wealth, e.g. to hand out
+  treasure fairly. A player has a name, gold, a list of magic items (a
+  title and a value in gp each) and a note; their total is gold + the
+  items' values. One line per player (A-Z) shows their number of items and
+  total, with the party's totals at the top. Tapping a player folds them
+  out to show every item with its value, the items' value, gold, total and
+  the note (**Show all** / **Hide all** does every player). In edit mode,
+  **+ New player** adds one, **✎** edits an open player right in the list
+  (items are added with **+ Add item** and removed with their **✕**; saved
+  with **Done** or by tapping outside it), and **✕** deletes a player (with
+  Undo)
 - **Notes** tab: loose notes for the campaign, each a title and a
   description, as cards on a board that pans and zooms like the mindmap,
   without lines between them. Tapping a note's title folds it out right
@@ -260,6 +271,12 @@ authoritative description is at the top of `store.js`.
   `notes` = description, plus two string fields `location` (`""` or missing
   = no location) and `note`. `x`/`y` aren't used. A `location`/`note` that
   isn't a string is dropped when loading.
+- `"board": "players"` is a player on the **Players** tab: `name`, `notes`
+  = the note, `gold` (a number, gp) and `items`, a list of
+  `{ "title": string, "value": number }` (gp). Loading a file drops a
+  `gold` that isn't a number and an `items` that isn't a list, leaves out
+  items without a title, and counts an item's missing/invalid value as 0.
+  Amounts are kept to the copper (2 decimals).
 
 ### Local storage keys
 
@@ -279,3 +296,4 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-board-open-<campaignId>` | Ids of the notes folded out on that campaign's Notes tab |
 | `rpg-notes-npc-open-<campaignId>` | Ids of the NPCs folded out on that campaign's NPCs tab |
 | `rpg-notes-npc-collapsed-<campaignId>` | Locations folded in on that campaign's NPCs tab (`""` = No location) |
+| `rpg-notes-player-open-<campaignId>` | Ids of the players folded out on that campaign's Players tab |

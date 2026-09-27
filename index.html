@@ -25,7 +25,7 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
   <header class="topbar">
@@ -116,8 +116,19 @@
       </div>
     </section>
     <!-- the other tabs - empty for now -->
-    <section id="players-tab-view" class="view tab-view">
-      <p class="tab-empty">Nothing here yet.</p>
+    <!-- Players: magic items and wealth per player (player-list.js) -->
+    <section id="players-tab-view" class="view">
+      <div class="npc-wrap">
+        <div class="npc-scroll">
+          <div class="player-bar">
+            <div id="player-summary" class="player-summary" hidden></div>
+            <button id="player-toggle-all-btn" class="btn" hidden>Show all</button>
+          </div>
+          <p id="player-empty" class="npc-empty" hidden></p>
+          <ul id="player-list" class="player-list"></ul>
+        </div>
+        <button id="player-new-btn" class="btn btn-primary float-btn">+ New player</button>
+      </div>
     </section>
     <!-- Notes: loose notes as cards on a board (notes-board.js) -->
     <section id="notes-tab-view" class="view">
@@ -141,7 +152,7 @@
     </section>
   </main>
 
-  <script src="store.js?v=20"></script>
+  <script src="store.js?v=21"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=7"></script>
   <script src="drive-sync.js?v=27"></script>
@@ -149,6 +160,7 @@
   <script src="mindmap-view.js?v=12"></script>
   <script src="notes-board.js?v=1"></script>
   <script src="npc-list.js?v=1"></script>
-  <script src="app.js?v=26"></script>
+  <script src="player-list.js?v=1"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>
