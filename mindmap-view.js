@@ -2,11 +2,10 @@
 // Mindmap view: nodes as freely placeable boxes on a "world" layer
 // (mindmap-world), with SVG lines showing parent/child connections.
 //
-// - Two levels: the start page shows only the campaign's root nodes (the
-//   "main nodes", e.g. chapters). Tapping one goes into it (`mainNodeId`),
-//   which shows that main node and its whole subtree - every descendant,
-//   with lines - as a normal mindmap. The ← button / breadcrumb at the top
-//   goes back to the start page. The data doesn't change at all: which
+// - It always shows ONE main node (a root node, e.g. a chapter) and its
+//   whole subtree - opened from that node's 🗺 button in the list view (see
+//   app.js). The bar at the top goes back to the list, or switches to
+//   another main node via a dropdown. The data doesn't change at all: which
 //   nodes are shown is just a filter on parentId.
 // - Panning/zoom work by transforming the whole world layer (translate+scale),
 //   node positions (x,y) are always in "world" coordinates and unaffected by zoom.
@@ -15,45 +14,42 @@
 // - All input uses Pointer Events (not mouse events), so it behaves the
 //   same with mouse, pen and touch/tablet. One-finger drag on empty canvas
 //   pans, two-finger pinch zooms (plus the mouse wheel on desktop).
-// - Tapping a node (no movement) inside a main node opens it (NotesEditor -
-//   rename and notes both live there). On the start page, tapping a main
-//   node goes into it instead, so its notes open from its small notes
-//   button there (or its name in the breadcrumb once inside). Dragging
-//   it (movement past a small threshold) moves it instead, and only works
-//   in edit mode.
+// - Tapping a node (no movement) opens it (NotesEditor - rename and notes
+//   both live there); dragging it (movement past a small threshold) moves
+//   it instead, and only works in edit mode.
 //
 // --- performance notes ---
-// render() is incremental: it diffs the current level's nodes against
+// render() is incremental: it diffs the main node's subtree against
 // what's already on screen (tracked in `entries`, keyed by node id) and
 // only creates/updates/removes what actually changed, instead of tearing
 // down and rebuilding every node and line on every single Store change.
-// Nodes outside the current main node never get any DOM at all, so a big
-// campaign costs no more to show than its biggest main node. Each node's rendered box
-// size (offsetWidth/offsetHeight) is measured once and cached on its
-// entry, and only re-measured when its text changes - reading
+// Nodes outside the open main node never get any DOM at all, so a big
+// campaign costs no more to show than its biggest main node. Each node's
+// rendered box size (offsetWidth/offsetHeight) is measured once and cached
+// on its entry, and only re-measured when its name text changes - reading
 // offsetWidth/Height forces the browser to flush layout, so avoiding
 // repeated reads (notably on every pointermove while dragging, for the
-// line math) is the main win here. `notes` is never
-// rendered - the mindmap only reads name/x/y/parentId (plus whether notes
-// is empty, for the has-notes marker).
+// line math) is the main win here. `notes` is never rendered - the mindmap
+// only reads name/x/y/parentId (plus whether notes is empty, for the
+// has-notes marker).
 
 const MindmapView = (() => {
   let canvasEl = null;
   let worldEl = null;
   let svgEl = null;
-  let breadcrumbEl = null;
-  let emptyEl = null;
-  let newNodeBtn = null;
+  let mainSelectEl = null;
   let zoom = 1;
   let panX = 0;
   let panY = 0;
 
-  // the root node whose subtree is shown (null = the start page, listing the root nodes)
+  // the root node whose subtree is shown (set by open())
   let mainNodeId = null;
-  // campaign + level that was last rendered, to re-center when it changes
-  let renderedLevelKey = null;
+  // campaign + main node that was last rendered, to re-center when it changes
+  let renderedKey = null;
+  // { onBack(), onSwitch(mainNodeId) } - navigation is owned by app.js
+  let callbacks = null;
 
-  // node id -> { div, nameSpan, countSpan, cached: <node data>, childCount, width, height }
+  // node id -> { div, nameSpan, cached: <node data>, width, height }
   const entries = new Map();
   // child node id -> its <line> element (a node has at most one parent line)
   const lineEls = new Map();
@@ -65,21 +61,23 @@ const MindmapView = (() => {
   let pinchStartDist = null;
   let pinchStartZoom = null;
 
-  function init(container) {
+  function init(container, navCallbacks) {
+    callbacks = navCallbacks;
     canvasEl = container.querySelector('#mindmap-canvas');
     worldEl = container.querySelector('#mindmap-world');
     svgEl = container.querySelector('#mindmap-svg');
-    breadcrumbEl = container.querySelector('#mindmap-breadcrumb');
-    emptyEl = container.querySelector('#mindmap-empty');
-    newNodeBtn = container.querySelector('#mindmap-new-root-btn');
+    mainSelectEl = container.querySelector('#mindmap-main-select');
 
-    newNodeBtn.addEventListener('click', () => {
-      // a new node on the current level, placed roughly in the middle of
-      // the current viewport
+    container.querySelector('#mindmap-back-btn').addEventListener('click', () => callbacks.onBack());
+    mainSelectEl.addEventListener('change', () => callbacks.onSwitch(mainSelectEl.value));
+
+    container.querySelector('#mindmap-new-node-btn').addEventListener('click', () => {
+      // a new child of the main node, placed roughly in the middle of the
+      // current viewport
       const rect = canvasEl.getBoundingClientRect();
       const worldX = Math.max(0, (rect.width / 2 - panX) / zoom - 60);
       const worldY = Math.max(0, (rect.height / 2 - panY) / zoom - 20);
-      const node = Store.addNode(mainNodeId ? 'New node' : 'New root node', mainNodeId);
+      const node = Store.addNode('New node', mainNodeId);
       if (!node) return;
       Store.moveNodePosition(node.id, worldX, worldY);
       NotesEditor.open(node.id);
@@ -165,14 +163,20 @@ const MindmapView = (() => {
     worldEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
   }
 
-  // --- levels / navigation ---
+  // --- which main node is shown ---
 
-  function navigateTo(parentId) {
-    mainNodeId = parentId;
+  // called by app.js whenever the mindmap is shown (and the view is visible,
+  // so centerView can measure the canvas)
+  function open(id) {
+    mainNodeId = id;
     render();
   }
 
-  // pans (keeping the zoom) so the level's nodes are centered in the
+  function getMainNodeId() {
+    return mainNodeId;
+  }
+
+  // pans (keeping the zoom) so the shown nodes are centered in the
   // viewport, or start at the top-left if they don't fit
   function centerView() {
     const rect = canvasEl.getBoundingClientRect();
@@ -185,7 +189,7 @@ const MindmapView = (() => {
       maxY = Math.max(maxY, entry.cached.y + entry.height);
     });
     const MARGIN = 40;
-    const TOP = 70; // room for the breadcrumb bar
+    const TOP = 70; // room for the bar at the top
     const w = (maxX - minX) * zoom;
     const h = (maxY - minY) * zoom;
     panX = w + 2 * MARGIN < rect.width ? (rect.width - w) / 2 - minX * zoom : MARGIN - minX * zoom;
@@ -193,123 +197,81 @@ const MindmapView = (() => {
     applyTransform();
   }
 
-  // "← | Campaign › Chapter 1 › Vinterholm 📝" - hidden on the root level
-  function renderBreadcrumb(nodeById) {
-    const path = []; // root-level node ... current node
-    for (let n = nodeById.get(mainNodeId); n; n = nodeById.get(n.parentId)) path.unshift(n);
-
-    breadcrumbEl.innerHTML = '';
-    breadcrumbEl.hidden = path.length === 0;
-    if (path.length === 0) return;
-
-    const campaignName = Store.getCurrentCampaignName() || 'Campaign';
-    const parent = path.length > 1 ? path[path.length - 2] : null;
-    const backBtn = document.createElement('button');
-    backBtn.className = 'btn mindmap-back-btn';
-    backBtn.textContent = '←';
-    backBtn.title = 'Back to ' + (parent ? parent.name : campaignName);
-    backBtn.addEventListener('click', () => navigateTo(parent ? parent.id : null));
-    breadcrumbEl.appendChild(backBtn);
-
-    const crumbs = [{ id: null, name: campaignName }, ...path];
-    crumbs.forEach((crumb, i) => {
-      if (i > 0) {
-        const sep = document.createElement('span');
-        sep.className = 'mindmap-crumb-sep';
-        sep.textContent = '›';
-        breadcrumbEl.appendChild(sep);
-      }
-      const btn = document.createElement('button');
-      btn.className = 'mindmap-crumb';
-      btn.textContent = crumb.name;
-      if (i === crumbs.length - 1) {
-        // the current node itself: open its notes
-        btn.classList.add('current');
-        btn.textContent += ' 📝';
-        btn.title = 'Open notes';
-        btn.addEventListener('click', () => NotesEditor.open(crumb.id));
-      } else {
-        btn.addEventListener('click', () => navigateTo(crumb.id));
-      }
-      breadcrumbEl.appendChild(btn);
+  // "Chapter 1 ▾" dropdown: every main node, to jump between them
+  function renderMainSelect(rootNodes) {
+    mainSelectEl.innerHTML = '';
+    rootNodes.forEach(n => {
+      const option = document.createElement('option');
+      option.value = n.id;
+      option.textContent = n.name;
+      option.selected = n.id === mainNodeId;
+      mainSelectEl.appendChild(option);
     });
-    // on a narrow screen, keep the current node (the end) in view
-    breadcrumbEl.scrollLeft = breadcrumbEl.scrollWidth;
   }
 
   // --- incremental render ---
-  // Diffs the current level's nodes against `entries`. Only touches nodes
+  // Diffs the main node's subtree against `entries`. Only touches nodes
   // that are new, gone, or actually changed - a rename, a notes edit or a
-  // position change never rebuilds nodes that weren't affected, and nodes
-  // outside the current level are never built at all.
+  // position change never rebuilds nodes/lines that weren't affected, and
+  // nodes outside the main node are never built at all.
 
   function render() {
     const allNodes = Store.getAll();
     const nodeById = new Map(allNodes.map(n => [n.id, n]));
 
-    // the main node was deleted (or the campaign switched): back to the start page
-    if (mainNodeId && !nodeById.has(mainNodeId)) mainNodeId = null;
-
+    const shownNodes = [];
     const childrenOf = new Map(); // parentId -> [child, ...]
     allNodes.forEach(n => {
       if (!childrenOf.has(n.parentId)) childrenOf.set(n.parentId, []);
       childrenOf.get(n.parentId).push(n);
     });
-    // start page: the root nodes. Inside a main node: it + all its descendants
-    let levelNodes = childrenOf.get(null) || [];
-    if (mainNodeId) {
-      levelNodes = [nodeById.get(mainNodeId)];
-      for (let i = 0; i < levelNodes.length; i++) {
-        levelNodes.push(...(childrenOf.get(levelNodes[i].id) || []));
+    // the main node + all its descendants (nothing if it no longer exists -
+    // app.js then takes us back to the list)
+    if (nodeById.has(mainNodeId)) {
+      shownNodes.push(nodeById.get(mainNodeId));
+      for (let i = 0; i < shownNodes.length; i++) {
+        shownNodes.push(...(childrenOf.get(shownNodes[i].id) || []));
       }
     }
-    const levelIds = new Set(levelNodes.map(n => n.id));
-
-    // switched main node / campaign: start from a clean slate, since the
-    // start page styles nodes differently (so cached box sizes don't carry over)
-    const levelKey = Store.getCurrentCampaignId() + '|' + mainNodeId;
-    const levelChanged = levelKey !== renderedLevelKey;
-    if (levelChanged) {
-      renderedLevelKey = levelKey;
-      [...entries.keys()].forEach(removeNodeEntry);
-      canvasEl.classList.toggle('start-page', !mainNodeId);
-    }
+    const shownIds = new Set(shownNodes.map(n => n.id));
 
     // remove entries for nodes that no longer exist or aren't shown any more
     entries.forEach((entry, id) => {
-      if (!levelIds.has(id)) removeNodeEntry(id);
+      if (!shownIds.has(id)) removeNodeEntry(id);
     });
 
-    levelNodes.forEach(node => {
-      const childCount = (childrenOf.get(node.id) || []).length;
+    // create or update every shown node (first pass, no line math yet -
+    // lines need every node's box to already be sized/positioned)
+    shownNodes.forEach(node => {
       const entry = entries.get(node.id);
-      const updated = entry ? updateNodeEntry(entry, node, childCount) : createNodeEntry(node, childCount);
-      updated.div.classList.toggle('is-current', node.id === mainNodeId);
+      if (!entry) createNodeEntry(node);
+      else updateNodeEntry(entry, node);
+      entries.get(node.id).div.classList.toggle('is-main', node.id === mainNodeId);
     });
 
-    // second pass: create/update/remove connection lines (they need every
-    // node's box to already be sized/positioned)
-    levelNodes.forEach(node => syncConnection(node));
+    // second pass: create/update/remove connection lines
+    shownNodes.forEach(node => syncConnection(node));
 
-    renderBreadcrumb(nodeById);
-    emptyEl.hidden = entries.size > (mainNodeId ? 1 : 0) || !Store.getCurrentCampaignId();
-    newNodeBtn.textContent = mainNodeId ? '+ New node' : '+ New root node';
+    renderMainSelect(childrenOf.get(null) || []);
 
-    if (levelChanged) centerView();
+    const key = Store.getCurrentCampaignId() + '|' + mainNodeId;
+    if (key !== renderedKey) {
+      renderedKey = key;
+      centerView();
+    }
   }
 
-  function createNodeEntry(node, childCount) {
-    const entry = { cached: node, childCount, positionChanged: true, sizeChanged: true };
+  function createNodeEntry(node) {
+    const entry = { cached: node, positionChanged: true, sizeChanged: true };
     entry.div = buildNodeEl(entry);
     entry.nameSpan = entry.div.querySelector('.mindmap-node-name');
-    entry.countSpan = entry.div.querySelector('.mindmap-node-count');
     worldEl.appendChild(entry.div);
     measure(entry);
     entries.set(node.id, entry);
     return entry;
   }
 
-  function updateNodeEntry(entry, node, childCount) {
+  function updateNodeEntry(entry, node) {
     const prev = entry.cached;
 
     entry.positionChanged = prev.x !== node.x || prev.y !== node.y;
@@ -318,22 +280,17 @@ const MindmapView = (() => {
       entry.div.style.top = node.y + 'px';
     }
 
-    const nameChanged = prev.name !== node.name;
-    if (nameChanged) entry.nameSpan.textContent = node.name;
-    const countChanged = entry.childCount !== childCount;
-    if (countChanged) {
-      entry.childCount = childCount;
-      setChildCount(entry.countSpan, childCount);
+    entry.sizeChanged = prev.name !== node.name;
+    if (entry.sizeChanged) {
+      entry.nameSpan.textContent = node.name;
+      measure(entry); // text changed -> box size may have changed too
     }
-    entry.sizeChanged = nameChanged || countChanged;
-    if (entry.sizeChanged) measure(entry); // text changed -> box size may have changed too
 
     if (!!prev.notes !== !!node.notes) {
       entry.div.classList.toggle('has-notes', !!node.notes);
     }
 
     entry.cached = node;
-    return entry;
   }
 
   function removeNodeEntry(id) {
@@ -345,7 +302,7 @@ const MindmapView = (() => {
   }
 
   // reads offsetWidth/Height (forces layout) - only called when a node is
-  // first created or its text changed, never on every render
+  // first created or its name text changed, never on every render
   function measure(entry) {
     entry.width = entry.div.offsetWidth;
     entry.height = entry.div.offsetHeight;
@@ -399,11 +356,6 @@ const MindmapView = (() => {
     line.setAttribute('y2', c.cy);
   }
 
-  function setChildCount(span, count) {
-    span.textContent = count ? '▸ ' + count : '';
-    span.hidden = !count;
-  }
-
   function buildNodeEl(entry) {
     const node = entry.cached;
     const div = document.createElement('div');
@@ -418,24 +370,6 @@ const MindmapView = (() => {
     nameSpan.className = 'mindmap-node-name';
     nameSpan.textContent = node.name;
     div.appendChild(nameSpan);
-
-    // how many children this node has, so you can tell which ones lead somewhere
-    const countSpan = document.createElement('span');
-    countSpan.className = 'mindmap-node-count';
-    setChildCount(countSpan, entry.childCount);
-    div.appendChild(countSpan);
-
-    // tapping the node goes into it, so its notes open from this button
-    const notesBtn = document.createElement('button');
-    notesBtn.className = 'mindmap-node-notes';
-    notesBtn.title = 'Open notes';
-    notesBtn.textContent = '📝';
-    notesBtn.addEventListener('pointerdown', e => e.stopPropagation());
-    notesBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      NotesEditor.open(entry.cached.id);
-    });
-    div.appendChild(notesBtn);
 
     const delBtn = document.createElement('button');
     delBtn.className = 'mindmap-node-del';
@@ -453,8 +387,7 @@ const MindmapView = (() => {
     });
     div.appendChild(delBtn);
 
-    // create a new child node directly from this node (on the start page,
-    // also go into it, so the new child is actually visible)
+    // create a new child node directly from this node
     const addBtn = document.createElement('button');
     addBtn.className = 'mindmap-node-add';
     addBtn.title = 'Add child node';
@@ -463,15 +396,15 @@ const MindmapView = (() => {
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
       const child = Store.addNode('New node', entry.cached.id);
-      if (!mainNodeId) navigateTo(entry.cached.id);
       NotesEditor.open(child.id);
     });
     div.appendChild(addBtn);
 
-    // right-click as an extra shortcut for deleting on desktop (mouse)
+    // right-click as an extra shortcut for deleting on desktop (mouse) -
+    // not the main node itself, that's deleted from the list view
     div.addEventListener('contextmenu', e => {
       e.preventDefault();
-      if (!AppMode.isEditMode()) return;
+      if (!AppMode.isEditMode() || entry.cached.id === mainNodeId) return;
       if (confirm(`Delete "${entry.cached.name}" and all its children?`)) {
         Store.deleteNode(entry.cached.id);
       }
@@ -481,8 +414,7 @@ const MindmapView = (() => {
     return div;
   }
 
-  // tapping/clicking without movement opens the node (on the start page:
-  // goes into the main node instead); dragging past a
+  // tapping/clicking without movement opens the node; dragging past a
   // small threshold moves it instead (edit mode only). Dragging only ever
   // changes the node's position - re-parenting is done in the list view.
   // Uses Pointer Events instead of separate mouse+touch handling.
@@ -554,8 +486,7 @@ const MindmapView = (() => {
         if (moved && editMode) {
           Store.moveNodePosition(entry.cached.id, entry.cached.x, entry.cached.y);
         } else if (!moved) {
-          if (mainNodeId) NotesEditor.open(entry.cached.id);
-          else navigateTo(entry.cached.id);
+          NotesEditor.open(entry.cached.id);
         }
       }
 
@@ -581,5 +512,5 @@ const MindmapView = (() => {
     });
   }
 
-  return { init, render };
+  return { init, render, open, getMainNodeId };
 })();

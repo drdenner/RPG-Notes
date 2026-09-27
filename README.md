@@ -1,20 +1,21 @@
 # RPG Notes
 
 A small note-taking app for tabletop RPG campaigns. Notes are organized as a
-tree of nodes (chapters, NPCs, places, ...) that you can browse either as a
-nested **List** or as a freely arranged **Mindmap**. Each node has a name and
+tree of nodes (chapters, NPCs, places, ...) shown as a nested **List**, where
+each main node (root node, e.g. a chapter) can be opened as a freely arranged
+**Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
 - Multiple independent campaigns, one active at a time
 - Edit mode / view mode (view mode locks everything, for use during a session)
 - Works with mouse, pen and touch, so it's usable on a tablet
-- The Mindmap starts on the campaign's root nodes (the main nodes, e.g.
-  chapters). Tap one to go into it: that main node and everything under it
-  is shown as a normal mindmap with lines, where tapping a node opens its
-  notes. Use the ← button or the breadcrumb at the top to go back. On the
-  start page, a main node's notes open from its 📝 button, and "▸ 3" means
-  it has 3 children. Only the open main node is rendered, which keeps big
-  campaigns fast
+- The List is the start page. The 🗺 button on a main node opens its
+  Mindmap: that node and everything under it, with lines, where tapping a
+  node opens its notes. **← List** goes back, and the dropdown next to it
+  switches to another main node. The browser's/tablet's back button also
+  returns to the list, and the app remembers an open mindmap, so reloading
+  or reopening the app lands on it again. Only the open main node is
+  rendered, which keeps big campaigns fast
 - Move a node to a new parent by dragging its ⠿ grip in the List view; in the
   Mindmap, dragging a node only changes its position
 - Everything is saved locally in the browser (`localStorage`)
@@ -126,9 +127,8 @@ authoritative description is at the top of `store.js`.
 - Children are never stored on a node. They're derived from `parentId`.
 - `notes` is plain text, never HTML. `**bold**` and URLs are only formatted
   when displayed.
-- `x`/`y` are the node's position in the mindmap. The mindmap shows either
-  the root nodes or one root node's subtree, so positions only matter within
-  those.
+- `x`/`y` are the node's position in the mindmap. The mindmap shows one
+  root node's subtree at a time, so positions only matter within that.
 - Loading a file repairs rather than rejects: missing fields get defaults, a
   `parentId` pointing at a missing node makes it a root, parent cycles are
   broken, duplicated ids get a fresh id. Unknown extra fields on a node are
@@ -144,3 +144,4 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-updated-<campaignId>` | When that campaign last changed (ISO timestamp) |
 | `rpg-notes-edit-mode` | `"true"` / `"false"` |
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
+| `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |

@@ -5,6 +5,8 @@
 //   - clicking a node's name opens it (NotesEditor - rename and notes both
 //     live there, there's no separate rename/notes button)
 //   - add child / delete (recursive, via Store.deleteNode)
+//   - a 🗺 button on every root node (main node) that opens the mindmap for
+//     it (onOpenMindmap, handled by app.js)
 //   - move node: dragged via a small grip (⠿), using Pointer Events so it
 //     works with mouse, pen and touch alike (native HTML5 drag-and-drop
 //     isn't supported on touch devices, so we build it ourselves)
@@ -20,10 +22,12 @@
 const TreeView = (() => {
   let listEl = null;
   const collapsed = new Set(); // ids that are currently collapsed
-  const entries = new Map();   // node id -> { li, row, toggle, nameSpan, childUl, cached }
+  const entries = new Map();   // node id -> { li, row, toggle, nameSpan, mapBtn, childUl, cached }
+  let onOpenMindmap = null;
 
-  function init(container) {
+  function init(container, callbacks) {
     listEl = container.querySelector('#tree-list');
+    onOpenMindmap = callbacks.onOpenMindmap;
 
     container.querySelector('#tree-new-root-btn').addEventListener('click', () => {
       const node = Store.addNode('New root node', null);
@@ -143,6 +147,20 @@ const TreeView = (() => {
     row.appendChild(nameSpan);
     entry.nameSpan = nameSpan;
 
+    // open the mindmap for this node - only main (root) nodes have one, and
+    // it's outside .tree-actions so it stays usable in view mode
+    const mapBtn = document.createElement('button');
+    mapBtn.className = 'btn-icon tree-map-btn';
+    mapBtn.title = 'Open mindmap';
+    mapBtn.textContent = '🗺';
+    mapBtn.hidden = !!node.parentId;
+    mapBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      onOpenMindmap(entry.cached.id);
+    });
+    row.appendChild(mapBtn);
+    entry.mapBtn = mapBtn;
+
     // action buttons
     const actions = document.createElement('span');
     actions.className = 'tree-actions';
@@ -182,6 +200,7 @@ const TreeView = (() => {
     const prev = entry.cached;
     if (prev.name !== node.name) entry.nameSpan.textContent = node.name;
     if (!!prev.notes !== !!node.notes) entry.nameSpan.classList.toggle('has-notes', !!node.notes);
+    if (!!prev.parentId !== !!node.parentId) entry.mapBtn.hidden = !!node.parentId; // became/stopped being a root node
     entry.cached = node;
   }
 

@@ -2,32 +2,35 @@
 // Glues the views together with the Store: initializes both views, keeps
 // whichever one is currently visible in sync with data changes (the other
 // just gets caught up when you switch to it, see renderAll/showView),
-// drives tab switching, edit/view mode, and the Google Drive buttons.
+// drives navigation between the list and a main node's mindmap, edit/view
+// mode, and the Google Drive buttons.
 
 document.addEventListener('DOMContentLoaded', () => {
   const treeContainer = document.getElementById('tree-view');
   const mindmapContainer = document.getElementById('mindmap-view');
-  const tabListBtn = document.getElementById('tab-list-btn');
-  const tabMindmapBtn = document.getElementById('tab-mindmap-btn');
 
-  TreeView.init(treeContainer);
-  MindmapView.init(mindmapContainer);
+  TreeView.init(treeContainer, { onOpenMindmap: openMindmap });
+  MindmapView.init(mindmapContainer, { onBack: closeMindmap, onSwitch: switchMindmap });
 
   // only the visible view is actually re-rendered when data changes; the
   // other one is marked dirty and catches up the moment you switch to it
   // (see showView below) - no point doing render work for a view nobody
   // is looking at right now
+  // (the mindmap needs no dirty flag: showView always re-renders it via
+  // MindmapView.open)
   let activeView = 'list';
   let treeDirty = false;
-  let mindmapDirty = false;
 
   function renderAll() {
     if (activeView === 'list') {
       TreeView.render();
-      mindmapDirty = true;
+      return;
+    }
+    treeDirty = true;
+    if (!Store.getById(MindmapView.getMainNodeId())) {
+      route(); // its main node was deleted, or the campaign switched: back to the list
     } else {
       MindmapView.render();
-      treeDirty = true;
     }
   }
   Store.subscribe(renderAll);
@@ -85,23 +88,76 @@ document.addEventListener('DOMContentLoaded', () => {
   Store.subscribeCampaignChange(updateCampaignUI);
   updateCampaignUI();
 
-  // --- switch between List and Mindmap tabs (same underlying data) ---
-  function showView(name) {
+  // --- navigation: the list is home; a main node's mindmap is opened from
+  // its 🗺 button. The open mindmap lives in the URL (#map=<id>), so the
+  // browser's/tablet's back button returns to the list, and a reload stays
+  // on the same mindmap. The last open one is also remembered, so reopening
+  // the app (without #map in the URL) lands on it again.
+  const OPEN_MINDMAP_KEY = 'rpg-notes-open-mindmap';
+
+  function mapIdFromHash() {
+    const m = location.hash.match(/^#map=(.+)$/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function mapUrl(id) { return '#map=' + encodeURIComponent(id); }
+  function listUrl() { return location.pathname + location.search; }
+
+  function openMindmap(id) {
+    // fromList: there's a list entry right behind this one in the history
+    history.pushState({ fromList: true }, '', mapUrl(id));
+    route();
+  }
+  function switchMindmap(id) {
+    history.replaceState(history.state, '', mapUrl(id));
+    route();
+  }
+  function closeMindmap() {
+    // step back in history when we can, so the back button doesn't lead
+    // into the mindmap again afterwards (popstate -> route shows the list)
+    if (history.state && history.state.fromList) history.back();
+    else { history.replaceState(null, '', listUrl()); route(); }
+  }
+
+  // shows whatever the URL says
+  function route() {
+    const id = mapIdFromHash();
+    if (id && Store.getById(id)) {
+      showView('mindmap', id);
+    } else {
+      if (id) history.replaceState(null, '', listUrl()); // node no longer exists
+      showView('list');
+    }
+  }
+  window.addEventListener('popstate', route);
+
+  function showView(name, mapId) {
     const isList = name === 'list';
-    activeView = isList ? 'list' : 'mindmap';
+    activeView = name;
     treeContainer.classList.toggle('active', isList);
     mindmapContainer.classList.toggle('active', !isList);
-    tabListBtn.classList.toggle('active', isList);
-    tabMindmapBtn.classList.toggle('active', !isList);
+    try {
+      if (isList) localStorage.removeItem(OPEN_MINDMAP_KEY);
+      else localStorage.setItem(OPEN_MINDMAP_KEY, mapId);
+    } catch (e) { /* storage unavailable - just not remembered */ }
 
-    // catch up the view we're switching to if it missed any updates
-    // while it was in the background
+    // catch up the list if it missed any updates while the mindmap was
+    // shown; the mindmap is rendered fresh (after being made visible, so it
+    // can measure itself and center its nodes)
     if (isList && treeDirty) { TreeView.render(); treeDirty = false; }
-    if (!isList && mindmapDirty) { MindmapView.render(); mindmapDirty = false; }
+    if (!isList) MindmapView.open(mapId);
   }
-  tabListBtn.addEventListener('click', () => showView('list'));
-  tabMindmapBtn.addEventListener('click', () => showView('mindmap'));
-  showView('list');
+
+  // reopened without #map in the URL: go back to the mindmap that was open
+  // last time, with the list behind it in the history
+  if (!mapIdFromHash()) {
+    let lastId = null;
+    try { lastId = localStorage.getItem(OPEN_MINDMAP_KEY); } catch (e) { /* ignore */ }
+    if (lastId && Store.getById(lastId)) {
+      history.replaceState(null, '', listUrl());
+      history.pushState({ fromList: true }, '', mapUrl(lastId));
+    }
+  }
+  route();
 
   // --- edit/view mode ---
   const modeToggleBtn = document.getElementById('mode-toggle-btn');
