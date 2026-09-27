@@ -373,6 +373,17 @@ body.no-campaign #mindmap-new-root-btn {
   background: rgba(201, 162, 91, 0.12);
 }
 
+/* the node you're "in", drawn with lines out to its children; tapping
+   it opens its notes. It's deleted from the level above, not here */
+.mindmap-node.is-current {
+  border: 2px solid var(--accent-gold);
+  font-weight: 600;
+}
+
+.mindmap-node.is-current .mindmap-node-del {
+  display: none;
+}
+
 /* "▸ 3": the node has 3 children, tap it to go in */
 .mindmap-node-count {
   display: block;
@@ -452,6 +463,21 @@ body.no-campaign #mindmap-new-root-btn {
   top: 0;
   left: 0;
   transform-origin: 0 0;
+}
+
+/* overflow: visible, so lines are drawn even outside its (0x0) box */
+.mindmap-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.mindmap-link {
+  stroke: var(--accent-gold);
+  stroke-width: 2;
+  opacity: 0.55;
 }
 
 /* "← | Campaign › Chapter 1 › ..." - like the float button, it sits on
@@ -554,6 +580,17 @@ body.no-campaign #mindmap-new-root-btn {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 0.92rem;
+}
+
+/* the node you're "in", drawn with lines out to its children; tapping
+   it opens its notes. It's deleted from the level above, not here */
+.mindmap-node.is-current {
+  border: 2px solid var(--accent-gold);
+  font-weight: 600;
+}
+
+.mindmap-node.is-current .mindmap-node-del {
+  display: none;
 }
 
 /* "▸ 3": the node has 3 children, tap it to go in */

@@ -8,12 +8,12 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 - Multiple independent campaigns, one active at a time
 - Edit mode / view mode (view mode locks everything, for use during a session)
 - Works with mouse, pen and touch, so it's usable on a tablet
-- The Mindmap shows one level at a time: the root nodes, or the direct
-  children of the node you're in. Tap a node to go into it, and use the ←
-  button or the breadcrumb at the top to go back up. A node's notes open from
-  its 📝 button (or the current node's name in the breadcrumb), and "▸ 3"
-  means it has 3 children. Only the current level is rendered, which keeps
-  big campaigns fast
+- The Mindmap shows one level at a time: the root nodes, or the node you're
+  in (highlighted) with lines out to its direct children. Tap a child to go
+  into it, and use the ← button or the breadcrumb at the top to go back up.
+  Tapping the highlighted node, its 📝 button, or its name in the breadcrumb
+  opens its notes, and "▸ 3" means a node has 3 children. Only the current
+  level is rendered, which keeps big campaigns fast
 - Move a node to a new parent by dragging its ⠿ grip in the List view; in the
   Mindmap, dragging a node only changes its position
 - Everything is saved locally in the browser (`localStorage`)
@@ -126,8 +126,8 @@ authoritative description is at the top of `store.js`.
 - `notes` is plain text, never HTML. `**bold**` and URLs are only formatted
   when displayed.
 - `x`/`y` are the node's position in the mindmap. The mindmap only shows
-  one level (siblings) at a time, so positions only matter relative to a
-  node's siblings.
+  a node and its children at a time, so positions only matter relative to a
+  node's parent and siblings.
 - Loading a file repairs rather than rejects: missing fields get defaults, a
   `parentId` pointing at a missing node makes it a root, parent cycles are
   broken, duplicated ids get a fresh id. Unknown extra fields on a node are

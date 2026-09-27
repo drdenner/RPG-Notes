@@ -1,21 +1,25 @@
 // mindmap-view.js
 // Mindmap view: nodes as freely placeable boxes on a "world" layer
-// (mindmap-world), one level of the campaign at a time.
+// (mindmap-world), one level of the campaign at a time, with SVG lines
+// from the current node to its children.
 //
-// - Only the direct children of the current node (`currentParentId`, null =
-//   the campaign's root nodes) are rendered. Tapping a node goes into it,
-//   and the breadcrumb bar at the top goes back up. The data doesn't change
-//   at all: the current level is just a filter on parentId.
+// - Only the current node (`currentParentId`, null = the campaign's root
+//   level) and its direct children are rendered. The current node is drawn
+//   at its own x/y, highlighted, with a line to each child; on the root
+//   level there's no current node, just the root nodes. Tapping a child
+//   goes into it, and the breadcrumb bar at the top goes back up. The data
+//   doesn't change at all: the current level is just a filter on parentId.
 // - Panning/zoom work by transforming the whole world layer (translate+scale),
 //   node positions (x,y) are always in "world" coordinates and unaffected by zoom.
-// - While dragging, the DOM is updated directly (no full re-render) to
-//   avoid flicker; the Store is only updated once you release.
+// - While dragging, the DOM and lines are updated directly (no full
+//   re-render) to avoid flicker; the Store is only updated once you release.
 // - All input uses Pointer Events (not mouse events), so it behaves the
 //   same with mouse, pen and touch/tablet. One-finger drag on empty canvas
 //   pans, two-finger pinch zooms (plus the mouse wheel on desktop).
-// - Tapping a node (no movement) goes into it; its notes open from the
-//   small notes button on the node, or from the current node's name in the
-//   breadcrumb (NotesEditor - rename and notes both live there). Dragging
+// - Tapping a child (no movement) goes into it; tapping the current node
+//   opens its notes. Notes also open from the small notes button on every
+//   node, or from the current node's name in the breadcrumb (NotesEditor -
+//   rename and notes both live there). Dragging
 //   it (movement past a small threshold) moves it instead, and only works
 //   in edit mode.
 //
@@ -23,18 +27,21 @@
 // render() is incremental: it diffs the current level's nodes against
 // what's already on screen (tracked in `entries`, keyed by node id) and
 // only creates/updates/removes what actually changed, instead of tearing
-// down and rebuilding every node on every single Store change. Nodes
-// outside the current level never get any DOM at all, so a big campaign
+// down and rebuilding every node and line on every single Store change.
+// Nodes outside the current level never get any DOM at all, so a big campaign
 // costs no more to show than its busiest level. Each node's rendered box
 // size (offsetWidth/offsetHeight) is measured once and cached on its
 // entry, and only re-measured when its text changes - reading
-// offsetWidth/Height forces the browser to flush layout. `notes` is never
+// offsetWidth/Height forces the browser to flush layout, so avoiding
+// repeated reads (notably on every pointermove while dragging, for the
+// line math) is the main win here. `notes` is never
 // rendered - the mindmap only reads name/x/y/parentId (plus whether notes
 // is empty, for the has-notes marker).
 
 const MindmapView = (() => {
   let canvasEl = null;
   let worldEl = null;
+  let svgEl = null;
   let breadcrumbEl = null;
   let emptyEl = null;
   let newNodeBtn = null;
@@ -49,6 +56,8 @@ const MindmapView = (() => {
 
   // node id -> { div, nameSpan, countSpan, cached: <node data>, childCount, width, height }
   const entries = new Map();
+  // child node id -> its <line> element (a node has at most one parent line)
+  const lineEls = new Map();
 
   // --- panning + pinch-zoom state (canvas-level, can have 1-2 concurrent pointers) ---
   const activePointers = new Map(); // pointerId -> {x,y}
@@ -60,6 +69,7 @@ const MindmapView = (() => {
   function init(container) {
     canvasEl = container.querySelector('#mindmap-canvas');
     worldEl = container.querySelector('#mindmap-world');
+    svgEl = container.querySelector('#mindmap-svg');
     breadcrumbEl = container.querySelector('#mindmap-breadcrumb');
     emptyEl = container.querySelector('#mindmap-empty');
     newNodeBtn = container.querySelector('#mindmap-new-root-btn');
@@ -245,7 +255,8 @@ const MindmapView = (() => {
     const levelNodes = [];
     allNodes.forEach(n => {
       if (n.parentId) childCounts.set(n.parentId, (childCounts.get(n.parentId) || 0) + 1);
-      if (n.parentId === currentParentId) levelNodes.push(n);
+      // the current node itself + its children
+      if (n.parentId === currentParentId || n.id === currentParentId) levelNodes.push(n);
     });
     const levelIds = new Set(levelNodes.map(n => n.id));
 
@@ -257,12 +268,17 @@ const MindmapView = (() => {
     levelNodes.forEach(node => {
       const childCount = childCounts.get(node.id) || 0;
       const entry = entries.get(node.id);
-      if (!entry) createNodeEntry(node, childCount);
-      else updateNodeEntry(entry, node, childCount);
+      const updated = entry ? updateNodeEntry(entry, node, childCount) : createNodeEntry(node, childCount);
+      updated.div.classList.toggle('is-current', node.id === currentParentId);
     });
 
+    // second pass: lines need every node's box to already be sized and
+    // positioned. Only a child's line to the current node is ever drawn -
+    // the current node's own parent isn't rendered, so that line is removed
+    levelNodes.forEach(node => syncConnection(node));
+
     renderBreadcrumb(nodeById);
-    emptyEl.hidden = levelNodes.length > 0 || !Store.getCurrentCampaignId();
+    emptyEl.hidden = entries.size > (currentParentId ? 1 : 0) || !Store.getCurrentCampaignId();
     newNodeBtn.textContent = currentParentId ? '+ New node' : '+ New root node';
 
     const levelKey = Store.getCurrentCampaignId() + '|' + currentParentId;
@@ -273,7 +289,7 @@ const MindmapView = (() => {
   }
 
   function createNodeEntry(node, childCount) {
-    const entry = { cached: node, childCount };
+    const entry = { cached: node, childCount, positionChanged: true, sizeChanged: true };
     entry.div = buildNodeEl(entry);
     entry.nameSpan = entry.div.querySelector('.mindmap-node-name');
     entry.countSpan = entry.div.querySelector('.mindmap-node-count');
@@ -286,7 +302,8 @@ const MindmapView = (() => {
   function updateNodeEntry(entry, node, childCount) {
     const prev = entry.cached;
 
-    if (prev.x !== node.x || prev.y !== node.y) {
+    entry.positionChanged = prev.x !== node.x || prev.y !== node.y;
+    if (entry.positionChanged) {
       entry.div.style.left = node.x + 'px';
       entry.div.style.top = node.y + 'px';
     }
@@ -298,19 +315,23 @@ const MindmapView = (() => {
       entry.childCount = childCount;
       setChildCount(entry.countSpan, childCount);
     }
-    if (nameChanged || countChanged) measure(entry); // text changed -> box size may have changed too
+    entry.sizeChanged = nameChanged || countChanged;
+    if (entry.sizeChanged) measure(entry); // text changed -> box size may have changed too
 
     if (!!prev.notes !== !!node.notes) {
       entry.div.classList.toggle('has-notes', !!node.notes);
     }
 
     entry.cached = node;
+    return entry;
   }
 
   function removeNodeEntry(id) {
     const entry = entries.get(id);
     if (entry) entry.div.remove();
     entries.delete(id);
+    const line = lineEls.get(id);
+    if (line) { line.remove(); lineEls.delete(id); }
   }
 
   // reads offsetWidth/Height (forces layout) - only called when a node is
@@ -318,6 +339,54 @@ const MindmapView = (() => {
   function measure(entry) {
     entry.width = entry.div.offsetWidth;
     entry.height = entry.div.offsetHeight;
+  }
+
+  function syncConnection(node) {
+    const parentEntry = node.parentId ? entries.get(node.parentId) : null;
+    const childEntry = entries.get(node.id);
+    let line = lineEls.get(node.id);
+
+    if (!parentEntry || !childEntry) {
+      if (line) { line.remove(); lineEls.delete(node.id); }
+      return;
+    }
+
+    // a brand new line, or one that now points at a different parent
+    // (re-parented in the list view), always needs fresh endpoints -
+    // this can't be inferred from positionChanged/sizeChanged alone
+    let reconnected = false;
+    if (!line) {
+      line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('class', 'mindmap-link');
+      line.dataset.child = node.id;
+      svgEl.appendChild(line);
+      lineEls.set(node.id, line);
+      reconnected = true;
+    }
+    if (line.dataset.parent !== node.parentId) {
+      line.dataset.parent = node.parentId;
+      reconnected = true;
+    }
+
+    // cheap: only touch the SVG attributes when something relevant to this
+    // specific edge actually changed, not on every render (e.g. a pure
+    // notes edit elsewhere touches nothing here)
+    if (reconnected || parentEntry.positionChanged || parentEntry.sizeChanged || childEntry.positionChanged || childEntry.sizeChanged) {
+      updateLineEndpoints(line, parentEntry, childEntry);
+    }
+  }
+
+  function centerOf(entry) {
+    return { cx: entry.cached.x + entry.width / 2, cy: entry.cached.y + entry.height / 2 };
+  }
+
+  function updateLineEndpoints(line, parentEntry, childEntry) {
+    const p = centerOf(parentEntry);
+    const c = centerOf(childEntry);
+    line.setAttribute('x1', p.cx);
+    line.setAttribute('y1', p.cy);
+    line.setAttribute('x2', c.cx);
+    line.setAttribute('y2', c.cy);
   }
 
   function setChildCount(span, count) {
@@ -402,16 +471,18 @@ const MindmapView = (() => {
     return div;
   }
 
-  // tapping/clicking without movement goes into the node; dragging past a
+  // tapping/clicking without movement goes into the node (or, for the
+  // current node, opens its notes); dragging past a
   // small threshold moves it instead (edit mode only). Dragging only ever
   // changes the node's position - re-parenting is done in the list view.
   // Uses Pointer Events instead of separate mouse+touch handling.
   //
   // Performance: no Store writes and no full re-render happen while
-  // dragging - only this node's style.left/top is touched directly. The
-  // raw pointermove stream is coalesced with requestAnimationFrame, so a
-  // fast flurry of events only does one DOM update per frame instead of
-  // one per event.
+  // dragging - only this node's style.left/top and its own connection
+  // lines are touched directly, using the box size cached on `entry`
+  // (never re-measuring offsetWidth/Height mid-drag). The raw pointermove
+  // stream is coalesced with requestAnimationFrame, so a fast flurry of
+  // events only does one DOM update per frame instead of one per event.
   function makeDraggable(entry) {
     const MOVE_THRESHOLD = 5; // px, before a tap counts as a drag
     const div = entry.div;
@@ -442,9 +513,11 @@ const MindmapView = (() => {
         const newY = Math.max(0, startTop + dy);
         div.style.left = newX + 'px';
         div.style.top = newY + 'px';
-        // in-memory only, nothing is written to Store mid-drag
+        // keep the cached position in sync so line math stays correct;
+        // this is in-memory only, nothing is written to Store mid-drag
         entry.cached.x = newX;
         entry.cached.y = newY;
+        updateLinksForNode(entry);
       }
 
       function onMove(ev) {
@@ -471,13 +544,30 @@ const MindmapView = (() => {
         if (moved && editMode) {
           Store.moveNodePosition(entry.cached.id, entry.cached.x, entry.cached.y);
         } else if (!moved) {
-          navigateTo(entry.cached.id);
+          if (entry.cached.id === currentParentId) NotesEditor.open(entry.cached.id);
+          else navigateTo(entry.cached.id);
         }
       }
 
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', finish);
       document.addEventListener('pointercancel', finish);
+    });
+  }
+
+  // live-updates while dragging: the line to the parent (as a child) and
+  // lines to its own children (as a parent), without a full re-render
+  function updateLinksForNode(entry) {
+    const c = centerOf(entry);
+
+    const asChild = lineEls.get(entry.cached.id);
+    if (asChild) {
+      asChild.setAttribute('x2', c.cx);
+      asChild.setAttribute('y2', c.cy);
+    }
+    svgEl.querySelectorAll(`[data-parent="${entry.cached.id}"]`).forEach(line => {
+      line.setAttribute('x1', c.cx);
+      line.setAttribute('y1', c.cy);
     });
   }
 
