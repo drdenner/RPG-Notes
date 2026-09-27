@@ -4,15 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RPG Notes</title>
+<!-- installable app ("Add to Home Screen"): runs full screen, and works
+     offline thanks to sw.js -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1d1712">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RPG Notes">
 <!--
   Cache-busting: every local file below is loaded with a ?v=N query string.
   Browsers (and GitHub Pages' CDN) cache these aggressively by URL, so after
   editing ANY .js or .css file, bump this number (e.g. v=2 -> v=3) so the
   browser sees a "new" URL and fetches the updated file instead of serving
   a stale cached copy. Hard refresh (Ctrl+Shift+R) still works too, but this
-  means regular visits pick up updates without needing one.
+  means regular visits pick up updates without needing one. (sw.js, which
+  keeps the app working offline, caches files by these same URLs, so
+  bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=17">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -23,6 +34,15 @@
       <button id="campaign-new-btn" class="btn-icon" title="New campaign">+</button>
       <button id="campaign-rename-btn" class="btn-icon" title="Rename campaign">✎</button>
       <button id="campaign-delete-btn" class="btn-icon btn-danger" title="Delete campaign">✕</button>
+      <div class="menu-wrap">
+        <button id="campaign-menu-btn" class="btn-icon" title="Backup and import" aria-haspopup="true" aria-expanded="false">⋯</button>
+        <div id="campaign-menu" class="popup-menu popup-menu-left" hidden>
+          <button id="campaign-export-btn" class="btn">⤓ Download a backup of this campaign</button>
+          <button id="campaign-import-btn" class="btn">⤒ Import a campaign from a file…</button>
+          <p class="popup-menu-note">A backup is a .json file in the same format as the Google Drive files.</p>
+        </div>
+        <input id="campaign-import-input" type="file" accept=".json,application/json" hidden>
+      </div>
     </div>
     <!-- shows which mode you're in; tap the other one to switch -->
     <div class="mode-switch" role="group" aria-label="Mode">
@@ -35,14 +55,15 @@
         <span id="drive-status-text">Drive: not connected</span>
         <span class="drive-menu-caret">▾</span>
       </button>
-      <div id="drive-menu" class="drive-menu" hidden>
+      <div id="drive-menu" class="popup-menu" hidden>
+        <p id="drive-offline-note" class="popup-menu-note" hidden>No internet connection. Changes are saved on this device and synced with Google Drive when you're back online.</p>
         <button id="drive-connect-btn" class="btn">Connect Drive</button>
         <button id="drive-sync-btn" class="btn" hidden title="Sync every campaign with Google Drive - the newest version wins">Sync now</button>
         <button id="campaign-remove-local-btn" class="btn" hidden title="The campaign is saved to Google Drive first and stays there">⏏ Remove this campaign from this device</button>
         <button id="drive-disconnect-btn" class="btn" hidden>Disconnect Drive</button>
         <div id="drive-menu-danger" class="drive-menu-danger" hidden>
           <button id="drive-pull-btn" class="btn btn-danger-outline">Pull from Drive…</button>
-          <p class="drive-menu-note">Replaces ALL campaigns on this device with the ones on Google Drive.</p>
+          <p class="popup-menu-note">Replaces ALL campaigns on this device with the ones on Google Drive.</p>
         </div>
       </div>
     </div>
@@ -51,6 +72,12 @@
   <div id="drive-banner" class="drive-banner" hidden>
     <span id="drive-banner-text"></span>
     <button id="drive-banner-btn" class="btn btn-primary">Reconnect</button>
+  </div>
+
+  <!-- "Deleted ... - Undo", shown for a few seconds after deleting nodes -->
+  <div id="toast" class="toast" hidden role="status">
+    <span id="toast-text"></span>
+    <button id="toast-undo-btn" class="btn">Undo</button>
   </div>
 
   <main class="app-main">
@@ -80,12 +107,12 @@
     </section>
   </main>
 
-  <script src="store.js?v=17"></script>
+  <script src="store.js?v=18"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=6"></script>
-  <script src="drive-sync.js?v=23"></script>
+  <script src="drive-sync.js?v=24"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

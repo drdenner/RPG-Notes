@@ -60,6 +60,10 @@
 // extra fields on a node are preserved, not stripped, so a future version
 // of this app can add fields without older exports losing them.
 //
+// Several tabs with the app open share the same localStorage: when another
+// tab saves, the 'storage' event reloads the data here (see
+// onStorageChange), so the tabs don't silently overwrite each other.
+//
 // Want to extend the data model later (e.g. tags, color, node type)? Add
 // the fields here and in normalizeNodes.
 
@@ -71,9 +75,13 @@ const Store = (() => {
   let campaigns = [];
   let currentCampaignId = null;
   let nodes = [];
-  const dataListeners = [];        // fired on real data mutations (add/rename/delete/move/notes)
+  // fired on data changes with { external }: false = a real edit made here,
+  // true = the data was replaced from outside (Drive, or another tab), so
+  // there's nothing new to upload from this tab
+  const dataListeners = [];
   const campaignListeners = [];    // fired when the active campaign changes (switch/create/delete)
   const campaignDeletedListeners = []; // fired with (id, name) right after a campaign is deleted, so drive-sync.js can trash its Drive file
+  const nodesDeletedListeners = [];    // fired with (deleted nodes, campaign id) after deleteNode, so the UI can offer Undo
 
   function dataKey(campaignId) {
     return 'rpg-notes-data-' + campaignId;
@@ -98,7 +106,7 @@ const Store = (() => {
   function notify() {
     trySetItem(updatedAtKey(currentCampaignId), new Date().toISOString());
     save();
-    dataListeners.forEach(fn => fn({ fromDrive: false }));
+    dataListeners.forEach(fn => fn({ external: false }));
   }
 
   // notifies subscribers that the ACTIVE campaign changed (not its data) -
@@ -205,6 +213,30 @@ const Store = (() => {
   function subscribeCampaignDeleted(fn) {
     campaignDeletedListeners.push(fn);
   }
+
+  function subscribeNodesDeleted(fn) {
+    nodesDeletedListeners.push(fn);
+  }
+
+  // another tab changed localStorage: pick up its campaign list and, if it
+  // saved the campaign shown here, its nodes (this tab's copy would
+  // otherwise overwrite that change on its next save)
+  function onStorageChange(e) {
+    if (e.key === CAMPAIGNS_KEY) {
+      const before = JSON.stringify(campaigns);
+      try { campaigns = JSON.parse(e.newValue || '[]'); } catch (err) { return; }
+      if (!Array.isArray(campaigns)) campaigns = [];
+      if (!campaigns.some(c => c.id === currentCampaignId)) {
+        currentCampaignId = campaigns.length ? campaigns[0].id : null;
+        nodes = currentCampaignId ? loadCampaignNodes(currentCampaignId) : [];
+      }
+      if (JSON.stringify(campaigns) !== before) notifyCampaignChanged();
+    } else if (currentCampaignId && e.key === dataKey(currentCampaignId) && e.newValue) {
+      nodes = loadCampaignNodes(currentCampaignId);
+      dataListeners.forEach(fn => fn({ external: true }));
+    }
+  }
+  window.addEventListener('storage', onStorageChange);
 
   // --- campaigns ---
 
@@ -385,16 +417,18 @@ const Store = (() => {
     if (!node || !patch) return;
     let changed = false;
 
+    // only real changes count: an unchanged "Save" must not stamp the
+    // campaign as newer, or it could win a Drive sync against newer data
     if ('name' in patch) {
-      node.name = (patch.name || '').trim() || node.name;
-      changed = true;
+      const name = (patch.name || '').trim() || node.name;
+      if (name !== node.name) { node.name = name; changed = true; }
     }
     if ('notes' in patch) {
-      node.notes = typeof patch.notes === 'string' ? patch.notes : '';
-      changed = true;
+      const notes = typeof patch.notes === 'string' ? patch.notes : '';
+      if (notes !== node.notes) { node.notes = notes; changed = true; }
     }
     ['x', 'y'].forEach(key => {
-      if (typeof patch[key] === 'number' && isFinite(patch[key])) {
+      if (typeof patch[key] === 'number' && isFinite(patch[key]) && patch[key] !== node[key]) {
         node[key] = patch[key];
         changed = true;
       }
@@ -425,7 +459,8 @@ const Store = (() => {
     if (changed) notify();
   }
 
-  // deletes a node and all its children (recursively)
+  // deletes a node and all its children (recursively); the deleted nodes
+  // go to the nodes-deleted listeners, so they can be restored (Undo)
   function deleteNode(id) {
     const toDelete = new Set([id]);
     let changed = true;
@@ -438,7 +473,22 @@ const Store = (() => {
         }
       });
     }
+    const deleted = nodes.filter(n => toDelete.has(n.id));
+    if (!deleted.length) return;
     nodes = nodes.filter(n => !toDelete.has(n.id));
+    notify();
+    nodesDeletedListeners.forEach(fn => fn(deleted.map(n => ({ ...n })), currentCampaignId));
+  }
+
+  // puts nodes from deleteNode back (Undo). A node whose parent is gone
+  // meanwhile becomes a main node; ids that exist again are skipped.
+  function restoreNodes(deleted) {
+    const existing = new Set(nodes.map(n => n.id));
+    const back = deleted.filter(n => !existing.has(n.id)).map(n => ({ ...n }));
+    if (!back.length) return;
+    const ids = new Set([...existing, ...back.map(n => n.id)]);
+    back.forEach(n => { if (n.parentId && !ids.has(n.parentId)) n.parentId = null; });
+    nodes.push(...back);
     notify();
   }
 
@@ -459,8 +509,11 @@ const Store = (() => {
     nodes.forEach(n => {
       const p = positions[n.id];
       if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
-      n.x = Math.max(0, Math.round(p.x));
-      n.y = Math.max(0, Math.round(p.y));
+      const x = Math.max(0, Math.round(p.x));
+      const y = Math.max(0, Math.round(p.y));
+      if (x === n.x && y === n.y) return;
+      n.x = x;
+      n.y = y;
       changed = true;
     });
     if (changed) notify();
@@ -491,7 +544,7 @@ const Store = (() => {
     writeCampaignData(campaignId, newNodes, readUpdatedAt(data));
     if (campaignId !== currentCampaignId) return;
     nodes = newNodes;
-    dataListeners.forEach(fn => fn({ fromDrive: true }));
+    dataListeners.forEach(fn => fn({ external: true }));
   }
 
   // adds a campaign from a parsed campaign file, without switching to it
@@ -611,10 +664,10 @@ const Store = (() => {
 
   return {
     getAll, getById,
-    addNode, updateNode, deleteNode, moveNode, moveNodePosition, setPositions,
+    addNode, updateNode, deleteNode, restoreNodes, moveNode, moveNodePosition, setPositions,
     subscribe, exportJSON, getUpdatedAt, setCampaignData, addCampaignFromData,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,
     createCampaign, switchCampaign, renameCampaign, deleteCampaign, replaceAllCampaigns,
-    subscribeCampaignChange, subscribeCampaignDeleted
+    subscribeCampaignChange, subscribeCampaignDeleted, subscribeNodesDeleted
   };
 })();

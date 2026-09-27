@@ -31,7 +31,16 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 - In the Mindmap, one finger on empty space pans; two fingers zoom around
   the point between them and pan along (the mouse wheel zooms around the
   cursor)
-- Everything is saved locally in the browser (`localStorage`)
+- Deleting a node shows **Undo** for a few seconds (it and everything under
+  it come back)
+- Everything is saved locally in the browser (`localStorage`). With the app
+  open in several tabs, a change in one tab shows up in the others instead
+  of being overwritten
+- **Works without internet** once it has been opened online (see below), and
+  can be installed on a tablet's home screen
+- **Backup:** the **⋯** menu next to the campaign downloads the campaign as a
+  `.json` file, or imports one as a new campaign (same format as the Drive
+  files, see "Data format")
 - Optional sync via Google Drive, to use the same notes on several devices.
   Everything Drive-related is in the **Drive** menu at the top right
 
@@ -46,7 +55,30 @@ Google Drive sync needs `https://` or `http://localhost` (see below).
 
 Every local `.js`/`.css` file is included in `index.html` with a `?v=N`
 query string. **After changing a file, bump its number**, so browsers and
-GitHub Pages' CDN fetch the new version instead of a cached copy.
+GitHub Pages' CDN fetch the new version instead of a cached copy. The same
+goes for the offline copy (below): it's keyed by those URLs, so bumping the
+number is all an update needs there too.
+
+## Offline and on a tablet
+
+`sw.js` is a service worker: the first time the app is opened online (over
+`https://` or `http://localhost`, not `file://`), it saves a copy of the
+app's own files in the browser. After that the app starts and works without
+internet, e.g. at the table with no wifi. When online, it still checks for
+a new version each time it's opened (waiting at most 3 seconds before using
+the saved copy), so updates arrive as usual.
+
+- Your notes are in `localStorage` either way; the service worker only
+  keeps the app itself available.
+- Without internet, Drive shows **Drive: offline**. Changes are saved on the
+  device and synced automatically when the connection is back.
+- **Install it:** in the browser's menu, choose **Add to Home Screen** /
+  **Install app**. It then opens full screen like an app (icons are in
+  `icons/`, settings in `manifest.webmanifest`). On an iPad this also
+  matters for keeping the data: Safari may clear a website's storage after
+  7 days without use, but not an installed app's.
+- The app asks the browser to keep its storage permanently
+  (`navigator.storage.persist()`), so it isn't cleared when space runs low.
 
 ## Google Drive sync
 

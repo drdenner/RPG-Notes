@@ -134,7 +134,12 @@ body {
   cursor: default;
 }
 
-/* --- Drive menu (status button + dropdown with the Drive actions) --- */
+/* --- dropdown menus: Drive (status button + actions) and the campaign's
+   "⋯" (backup/import) --- */
+
+.menu-wrap {
+  position: relative;
+}
 
 .drive-menu-btn {
   display: flex;
@@ -147,7 +152,7 @@ body {
   color: var(--text-dim);
 }
 
-.drive-menu {
+.popup-menu {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -163,12 +168,17 @@ body {
   box-shadow: 0 6px 18px var(--shadow);
 }
 
-.drive-menu[hidden],
+.popup-menu-left {
+  right: auto;
+  left: 0;
+}
+
+.popup-menu[hidden],
 .drive-menu-danger[hidden] {
   display: none;
 }
 
-.drive-menu .btn {
+.popup-menu .btn {
   width: 100%;
   text-align: left;
 }
@@ -184,7 +194,7 @@ body {
   border-color: var(--accent-red);
 }
 
-.drive-menu-note {
+.popup-menu-note {
   margin: 6px 2px 0;
   font-size: 0.78rem;
   color: var(--text-dim);
@@ -197,6 +207,31 @@ body {
     height: 40px;
     font-size: 1.05rem;
   }
+}
+
+/* --- "Deleted ... - Undo" message, bottom center --- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100% - 32px);
+  padding: 10px 12px 10px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--accent-gold);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px var(--shadow);
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.toast[hidden] {
+  display: none;
 }
 
 /* --- "Drive sign-in expired" banner, between the topbar and the views --- */
@@ -238,7 +273,8 @@ body.view-mode #campaign-new-btn,
 body.view-mode #campaign-rename-btn,
 body.view-mode #campaign-delete-btn,
 body.view-mode #campaign-remove-local-btn,
-body.view-mode #mindmap-arrange-btn {
+body.view-mode #mindmap-arrange-btn,
+body.view-mode #campaign-import-btn {
   display: none !important;
 }
 

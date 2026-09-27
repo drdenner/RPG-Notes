@@ -3,7 +3,8 @@
 // whichever one is currently visible in sync with data changes (the other
 // just gets caught up when you switch to it, see renderAll/showView),
 // drives navigation between the list and a main node's mindmap, edit/view
-// mode, and the Google Drive buttons.
+// mode, the Google Drive buttons, backup/import, Undo after deleting
+// nodes, and offline support (sw.js).
 
 document.addEventListener('DOMContentLoaded', () => {
   const treeContainer = document.getElementById('tree-view');
@@ -43,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const campaignRenameBtn = document.getElementById('campaign-rename-btn');
   const campaignDeleteBtn = document.getElementById('campaign-delete-btn');
   const campaignRemoveLocalBtn = document.getElementById('campaign-remove-local-btn');
+  const campaignExportBtn = document.getElementById('campaign-export-btn');
   // dropdown values of campaigns that are only on Drive (not local campaign ids)
   const DRIVE_OPTION_PREFIX = 'drive:';
   let driveConnected = false; // kept up to date by updateDriveUI below
@@ -79,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     campaignDeleteBtn.disabled = !currentId;
     campaignRenameBtn.disabled = !currentId;
+    campaignExportBtn.disabled = !currentId;
     campaignRemoveLocalBtn.hidden = !driveConnected || !currentId;
     campaignSelect.disabled = !currentId && !driveOnly.length;
     document.body.classList.toggle('no-campaign', !currentId);
@@ -145,9 +148,77 @@ document.addEventListener('DOMContentLoaded', () => {
     campaignRemoveLocalBtn.disabled = false;
   });
 
+  // --- backup / import (the "⋯" menu): a campaign as a .json file, in the
+  // same format as the Drive files ---
+  setUpMenu(document.getElementById('campaign-menu-btn'), document.getElementById('campaign-menu'));
+
+  campaignExportBtn.addEventListener('click', () => {
+    const blob = new Blob([Store.exportJSON()], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = Store.sanitizeFileName(Store.getCurrentCampaignName()) + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  });
+
+  const importInput = document.getElementById('campaign-import-input');
+  document.getElementById('campaign-import-btn').addEventListener('click', () => {
+    importInput.value = '';
+    importInput.click();
+  });
+  // always added as a NEW campaign (named after the file), never over an
+  // existing one - a name that's taken on Drive gets "(imported)" added
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const base = file.name.replace(/\.json$/i, '').trim() || 'Imported campaign';
+      let name = base;
+      for (let n = 1; DriveSync.isNameOnDrive(name); n++) name = `${base} (imported${n > 1 ? ' ' + n : ''})`;
+      Store.switchCampaign(Store.addCampaignFromData(name, data));
+    } catch (err) {
+      alert(`Could not import "${file.name}": ${err.message}`);
+    }
+  });
+
   Store.subscribeCampaignChange(updateCampaignUI);
   DriveSync.subscribeRemoteCampaigns(updateCampaignUI);
   updateCampaignUI();
+
+  // --- "Deleted ... - Undo" after deleting nodes ---
+  const toast = document.getElementById('toast');
+  const toastText = document.getElementById('toast-text');
+  let toastTimer = null;
+  let undoAction = null;
+
+  function hideToast() {
+    toast.hidden = true;
+    undoAction = null;
+    clearTimeout(toastTimer);
+  }
+
+  document.getElementById('toast-undo-btn').addEventListener('click', () => {
+    const action = undoAction;
+    hideToast();
+    if (action) action();
+  });
+
+  Store.subscribeNodesDeleted((deleted, campaignId) => {
+    const ids = new Set(deleted.map(n => n.id));
+    const top = deleted.find(n => !ids.has(n.parentId)); // the node that was deleted, not one under it
+    const more = deleted.length - 1;
+    toastText.textContent = more
+      ? `Deleted "${top.name}" and ${more} node${more === 1 ? '' : 's'} under it.`
+      : `Deleted "${top.name}".`;
+    undoAction = () => { if (Store.getCurrentCampaignId() === campaignId) Store.restoreNodes(deleted); };
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 8000);
+  });
+  Store.subscribeCampaignChange(hideToast);
 
   // --- navigation: the list is home; a main node's mindmap is opened from
   // its 🗺 button. The open mindmap lives in the URL (#map=<id>), so the
@@ -248,19 +319,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const driveMenuBtn = document.getElementById('drive-menu-btn');
   const driveMenu = document.getElementById('drive-menu');
   const driveMenuDanger = document.getElementById('drive-menu-danger');
+  const driveOfflineNote = document.getElementById('drive-offline-note');
 
   // the Drive buttons live in a small menu, so they don't take up the top
   // bar (and "Pull from Drive" isn't right next to everything else)
-  function setDriveMenuOpen(open) {
-    driveMenu.hidden = !open;
-    driveMenuBtn.setAttribute('aria-expanded', String(open));
-  }
-  driveMenuBtn.addEventListener('click', () => setDriveMenuOpen(driveMenu.hidden));
-  driveMenu.addEventListener('click', e => { if (e.target.closest('button')) setDriveMenuOpen(false); });
-  document.addEventListener('pointerdown', e => {
-    if (!driveMenu.hidden && !driveMenu.contains(e.target) && !driveMenuBtn.contains(e.target)) setDriveMenuOpen(false);
-  });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') setDriveMenuOpen(false); });
+  setUpMenu(driveMenuBtn, driveMenu);
 
   const DRIVE_LABELS = {
     unconfigured: 'Drive: not set up',
@@ -269,7 +332,8 @@ document.addEventListener('DOMContentLoaded', () => {
     connected: 'Drive: connected',
     syncing: 'Drive: syncing…',
     error: 'Drive: error',
-    reauth: 'Drive: sign in again'
+    reauth: 'Drive: sign in again',
+    offline: 'Drive: offline'
   };
 
   function updateDriveUI(status, detail) {
@@ -282,7 +346,8 @@ document.addEventListener('DOMContentLoaded', () => {
       driveConnected = isConnectedish;
       updateCampaignUI(); // shows/hides "Remove from this device"
     }
-    driveConnectBtn.hidden = isConnectedish || status === 'connecting';
+    driveConnectBtn.hidden = isConnectedish || status === 'connecting' || status === 'offline';
+    driveOfflineNote.hidden = status !== 'offline';
     driveSyncBtn.hidden = !isConnectedish;
     driveMenuDanger.hidden = !isConnectedish;
     driveDisconnectBtn.hidden = !isConnectedish;
@@ -342,4 +407,28 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   DriveSync.init(updateDriveUI);
+
+  // --- offline ---
+  // sw.js keeps the app's files cached so it starts without internet
+  // (needs https:// or localhost, so not when opened as a file)
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('Offline support is unavailable', err));
+  }
+  // ask the browser not to clear the saved notes when space runs low
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 });
+
+// a button that opens a dropdown menu; tapping outside it, Escape, or any
+// button in the menu closes it again
+function setUpMenu(button, menu) {
+  const setOpen = open => {
+    menu.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+  };
+  button.addEventListener('click', () => setOpen(menu.hidden));
+  menu.addEventListener('click', e => { if (e.target.closest('button')) setOpen(false); });
+  document.addEventListener('pointerdown', e => {
+    if (!menu.hidden && !menu.contains(e.target) && !button.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setOpen(false); });
+}

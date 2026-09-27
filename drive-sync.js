@@ -39,6 +39,12 @@
 // that version has reached Drive - reconnecting syncs all of them, and
 // hasUnsyncedChanges() lets the UI warn that Drive is behind.
 //
+// Without internet the status is "offline" (not an error): edits are
+// saved on the device and marked unsynced as usual, and when the browser
+// reports it's back online, everything unsynced is synced automatically.
+// If the app was started offline, Google's sign-in library couldn't load -
+// it's loaded then instead.
+//
 // ONE-TIME SETUP: see "Google Drive sync" in README.md for how to get a
 // Google OAuth Client ID - it goes into CLIENT_ID below.
 //
@@ -54,6 +60,7 @@ const DriveSync = (() => {
   const UNSYNCED_KEY = 'rpg-notes-drive-unsynced'; // ids of campaigns with edits not on Drive yet
   const RENAMES_KEY = 'rpg-notes-drive-renames'; // { campaignId: name its Drive file still has } for renames not done there yet
   const UPLOAD_DEBOUNCE_MS = 10000;
+  const GIS_URL = 'https://accounts.google.com/gsi/client'; // Google's sign-in library (also in index.html)
 
   function fileNameFor(campaignName) { return `${Store.sanitizeFileName(campaignName)}.json`; }
   function campaignNameOf(fileName) { return fileName.slice(0, -'.json'.length); }
@@ -213,9 +220,10 @@ const DriveSync = (() => {
     return syncQueue;
   }
 
-  // errors from the expired sign-in have already set the 'reauth' status
+  // errors from the expired sign-in / a lost connection have already set
+  // the 'reauth' / 'offline' status
   function reportError(err) {
-    if (err.reauth) return;
+    if (err.reauth || err.offline) return;
     console.error('Drive sync failed', err);
     setStatus('error', err.message);
   }
@@ -224,33 +232,67 @@ const DriveSync = (() => {
 
   // status: 'unconfigured' | 'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'
   //       | 'reauth' (the sign-in expired - the user has to click Connect again)
+  //       | 'offline' (no internet - edits wait on the device)
   function init(onStatusChange) {
     statusCallback = onStatusChange || statusCallback;
     if (!isConfigured()) {
       setStatus('unconfigured');
       return;
     }
-    waitForGis(() => {
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPE,
-        callback: onTokenResponse,
-        error_callback: onTokenError // popup blocked/closed - GIS only reports these here
-      });
-      setStatus('disconnected');
-      // connected last time? try to reconnect without asking
-      if (localStorage.getItem(CONNECTED_KEY)) {
-        setStatus('connecting');
-        tokenClient.requestAccessToken({ prompt: '' });
-      }
+    waitForGis(setUpTokenClient);
+  }
+
+  function setUpTokenClient() {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPE,
+      callback: onTokenResponse,
+      error_callback: onTokenError // popup blocked/closed - GIS only reports these here
     });
+    setStatus('disconnected');
+    // connected last time? try to reconnect without asking
+    if (localStorage.getItem(CONNECTED_KEY)) {
+      setStatus('connecting');
+      tokenClient.requestAccessToken({ prompt: '' });
+    }
   }
 
   function waitForGis(cb, attempts = 0) {
     if (window.google && google.accounts && google.accounts.oauth2) { cb(); return; }
-    if (attempts > 50) { setStatus('error', 'Could not load Google\'s sign-in library'); return; }
+    if (attempts > 50) {
+      // most likely started without internet - loaded again when back online
+      setStatus(navigator.onLine ? 'error' : 'offline', 'Could not load Google\'s sign-in library');
+      return;
+    }
     setTimeout(() => waitForGis(cb, attempts + 1), 100);
   }
+
+  function loadGis() {
+    const script = document.createElement('script');
+    script.src = GIS_URL;
+    script.async = true;
+    document.head.appendChild(script);
+    waitForGis(setUpTokenClient);
+  }
+
+  window.addEventListener('offline', () => {
+    if (accessToken || lastStatus === 'connecting') setStatus('offline');
+  });
+
+  // back online: sync what was edited meanwhile (the sign-in usually
+  // survives a short offline spell); load the sign-in library if the app
+  // was started offline
+  window.addEventListener('online', () => {
+    if (!isConfigured()) return;
+    if (accessToken) {
+      setStatus('connecting');
+      queueSync(() => connectCurrentCampaign());
+    } else if (!tokenClient) {
+      loadGis();
+    } else if (localStorage.getItem(CONNECTED_KEY)) {
+      setStatus('reauth'); // needs a tap (Reconnect) - browsers block the popup otherwise
+    }
+  });
 
   function connect() {
     if (!tokenClient) return;
@@ -270,7 +312,8 @@ const DriveSync = (() => {
 
   function onTokenError(err) {
     const reason = (err && err.type) || 'sign-in failed';
-    setStatus(localStorage.getItem(CONNECTED_KEY) ? 'reauth' : 'disconnected', reason);
+    if (!navigator.onLine) setStatus('offline', reason);
+    else setStatus(localStorage.getItem(CONNECTED_KEY) ? 'reauth' : 'disconnected', reason);
   }
 
   // uploads a pending change first, and remembers the choice so the next
@@ -384,6 +427,7 @@ const DriveSync = (() => {
   async function doSyncAll() {
     setStatus('syncing');
     try {
+      await applyPendingRenames(); // so every campaign is found under its current name
       const files = await listCampaignFiles();
       const failed = [];
       for (const c of Store.listCampaigns()) {
@@ -484,10 +528,12 @@ const DriveSync = (() => {
     if (!accessToken) return Promise.reject(new Error('Not connected to Google Drive - click Connect Drive.'));
     if (campaignId === syncedCampaignId) { clearTimeout(uploadTimer); uploadTimer = null; } // uploaded below anyway
     return queueSync(async () => {
-      const campaign = Store.listCampaigns().find(c => c.id === campaignId);
-      if (!campaign) return;
+      if (!Store.listCampaigns().some(c => c.id === campaignId)) return;
       setStatus('syncing');
       try {
+        await applyPendingRenames();
+        // looked up after the renames, which can change its name back
+        const campaign = Store.listCampaigns().find(c => c.id === campaignId);
         let id = await findFile(fileNameFor(campaign.name));
         // sync again if it was edited while the upload was running, so that
         // edit isn't lost when the local copy is deleted
@@ -522,11 +568,12 @@ const DriveSync = (() => {
   }
 
   // uploads the current campaign a short while after the last change.
-  // Changes that came FROM Drive (a pull) aren't uploaded back. While Drive
-  // is in use (even with an expired sign-in), every edit marks its
-  // campaign unsynced until it has been uploaded.
+  // Data that came from outside (Drive, or another tab - which uploads it
+  // itself) isn't uploaded back. While Drive is in use (even with an
+  // expired sign-in), every edit marks its campaign unsynced until it has
+  // been uploaded.
   Store.subscribe(change => {
-    if (change.fromDrive) return;
+    if (change.external) return;
     const campaignId = Store.getCurrentCampaignId();
     if (localStorage.getItem(CONNECTED_KEY) && campaignId && !unsyncedIds.has(campaignId)) {
       updateUnsynced(() => unsyncedIds.add(campaignId));
@@ -616,7 +663,16 @@ const DriveSync = (() => {
 
   async function driveFetch(url, options = {}) {
     options.headers = Object.assign({ Authorization: `Bearer ${accessToken}` }, options.headers);
-    const res = await fetch(url, options);
+    let res;
+    try {
+      res = await fetch(url, options);
+    } catch (e) {
+      // no connection at all (fetch only rejects on network failure)
+      setStatus('offline');
+      const err = new Error('No internet connection. Your changes are saved on this device and uploaded when you\'re back online.');
+      err.offline = true;
+      throw err;
+    }
     if (res.status === 401) {
       accessToken = null;
       fileId = null;
