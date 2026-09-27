@@ -68,6 +68,13 @@ internet, e.g. at the table with no wifi. When online, it still checks for
 a new version each time it's opened (waiting at most 3 seconds before using
 the saved copy), so updates arrive as usual.
 
+- **Check before going offline:** the **⋯** menu next to the campaign says
+  "✓ Ready to use without internet", or why not.
+- Use the address **with a `/` at the end** (e.g. `…github.io/RPG/`, or
+  `…/RPG/index.html`). Browsers only let the offline copy answer for
+  addresses inside the folder, and `…/RPG` without the slash isn't - online
+  GitHub Pages quietly redirects it, offline it just fails. Install the app
+  from the address with the slash.
 - Your notes are in `localStorage` either way; the service worker only
   keeps the app itself available.
 - Without internet, Drive shows **Drive: offline**. Changes are saved on the

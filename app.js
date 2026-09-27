@@ -6,6 +6,32 @@
 // mode, the Google Drive buttons, backup/import, Undo after deleting
 // nodes, and offline support (sw.js).
 
+// --- offline support (sw.js keeps the app's files so it starts without
+// internet) - registered first thing, so nothing that goes wrong further
+// down can keep the app from being saved for offline use. Only possible
+// over https:// (or localhost), not when index.html is opened as a file.
+const offlinePossible = 'serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:';
+if (offlinePossible) {
+  navigator.serviceWorker.register('sw.js').catch(err => console.warn('Offline support is unavailable', err));
+}
+
+// whether the app will start without internet, and if not, why - shown in
+// the "⋯" menu so it can be checked before going offline
+async function offlineReadiness() {
+  if (!offlinePossible) {
+    return { ready: false, text: 'Not available offline: the app has to be opened from its https:// address (e.g. on GitHub Pages), not as a file.' };
+  }
+  const path = location.pathname;
+  if (!path.endsWith('/') && !path.endsWith('/index.html')) {
+    return { ready: false, text: 'Not available offline from this address: open the app with a "/" at the end of the address (…/' + path.split('/').pop() + '/), and install it from there.' };
+  }
+  let saved = false;
+  try { saved = !!(await caches.match(new URL('./', location.href).href)); } catch (e) { /* no cache access */ }
+  return saved
+    ? { ready: true, text: '✓ Ready to use without internet.' }
+    : { ready: false, text: 'Not ready for offline use yet: keep the app open for a moment while online, then check again.' };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const treeContainer = document.getElementById('tree-view');
   const mindmapContainer = document.getElementById('mindmap-view');
@@ -150,7 +176,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- backup / import (the "⋯" menu): a campaign as a .json file, in the
   // same format as the Drive files ---
-  setUpMenu(document.getElementById('campaign-menu-btn'), document.getElementById('campaign-menu'));
+  const campaignMenuBtn = document.getElementById('campaign-menu-btn');
+  setUpMenu(campaignMenuBtn, document.getElementById('campaign-menu'));
+
+  // checked each time the menu is opened
+  const offlineStatusEl = document.getElementById('offline-status');
+  campaignMenuBtn.addEventListener('click', async () => {
+    const { ready, text } = await offlineReadiness();
+    offlineStatusEl.textContent = text;
+    offlineStatusEl.classList.toggle('offline-ready', ready);
+  });
 
   campaignExportBtn.addEventListener('click', () => {
     const blob = new Blob([Store.exportJSON()], { type: 'application/json' });
@@ -408,12 +443,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   DriveSync.init(updateDriveUI);
 
-  // --- offline ---
-  // sw.js keeps the app's files cached so it starts without internet
-  // (needs https:// or localhost, so not when opened as a file)
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(err => console.warn('Offline support is unavailable', err));
-  }
   // ask the browser not to clear the saved notes when space runs low
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 });

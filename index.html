@@ -23,7 +23,7 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=17">
+<link rel="stylesheet" href="style.css?v=18">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -35,11 +35,12 @@
       <button id="campaign-rename-btn" class="btn-icon" title="Rename campaign">✎</button>
       <button id="campaign-delete-btn" class="btn-icon btn-danger" title="Delete campaign">✕</button>
       <div class="menu-wrap">
-        <button id="campaign-menu-btn" class="btn-icon" title="Backup and import" aria-haspopup="true" aria-expanded="false">⋯</button>
+        <button id="campaign-menu-btn" class="btn-icon" title="Backup, import and offline status" aria-haspopup="true" aria-expanded="false">⋯</button>
         <div id="campaign-menu" class="popup-menu popup-menu-left" hidden>
           <button id="campaign-export-btn" class="btn">⤓ Download a backup of this campaign</button>
           <button id="campaign-import-btn" class="btn">⤒ Import a campaign from a file…</button>
           <p class="popup-menu-note">A backup is a .json file in the same format as the Google Drive files.</p>
+          <p id="offline-status" class="popup-menu-note offline-status"></p>
         </div>
         <input id="campaign-import-input" type="file" accept=".json,application/json" hidden>
       </div>
@@ -113,6 +114,6 @@
   <script src="drive-sync.js?v=24"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>
