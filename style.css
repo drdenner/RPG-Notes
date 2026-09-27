@@ -234,7 +234,6 @@ body.view-mode .tree-actions,
 body.view-mode #tree-new-root-btn,
 body.view-mode .mindmap-node-del,
 body.view-mode .mindmap-node-add,
-body.view-mode #mindmap-new-node-btn,
 body.view-mode #campaign-new-btn,
 body.view-mode #campaign-rename-btn,
 body.view-mode #campaign-delete-btn,
@@ -346,8 +345,7 @@ body.no-campaign .no-campaign-msg {
   display: block;
 }
 body.no-campaign .tree-search-wrap,
-body.no-campaign #tree-new-root-btn,
-body.no-campaign #mindmap-new-node-btn {
+body.no-campaign #tree-new-root-btn {
   display: none !important;
 }
 

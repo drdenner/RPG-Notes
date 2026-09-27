@@ -74,18 +74,6 @@ const MindmapView = (() => {
     mainSelectEl.addEventListener('change', () => callbacks.onSwitch(mainSelectEl.value));
     container.querySelector('#mindmap-arrange-btn').addEventListener('click', arrange);
 
-    container.querySelector('#mindmap-new-node-btn').addEventListener('click', () => {
-      // a new child of the main node, placed roughly in the middle of the
-      // current viewport
-      const rect = canvasEl.getBoundingClientRect();
-      const worldX = Math.max(0, (rect.width / 2 - panX) / zoom - 60);
-      const worldY = Math.max(0, (rect.height / 2 - panY) / zoom - 20);
-      const node = Store.addNode('New node', mainNodeId);
-      if (!node) return;
-      Store.moveNodePosition(node.id, worldX, worldY);
-      NotesEditor.open(node.id, { isNew: true });
-    });
-
     // zoom with the mouse wheel (desktop) - just a transform, no per-node work
     canvasEl.addEventListener('wheel', e => {
       e.preventDefault();
