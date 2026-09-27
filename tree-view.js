@@ -1,12 +1,15 @@
 // tree-view.js
 // Nested list view of the notes.
 // Renders <ul>/<li> from Store, and handles:
-//   - collapse/expand per node (collapsed state is session-only, not saved)
-//   - clicking a node's name opens it (NotesEditor - rename and notes both
-//     live there, there's no separate rename/notes button)
+//   - collapse/expand per node (remembered per campaign in localStorage)
+//   - clicking a node's name (or the empty part of its row) opens it
+//     (NotesEditor - rename and notes both live there, there's no separate
+//     rename/notes button)
 //   - add child / delete (recursive, via Store.deleteNode)
-//   - a 🗺 button on every root node (main node) that opens the mindmap for
-//     it (onOpenMindmap, handled by app.js)
+//   - a "🗺 Mindmap" button on every main node (root node) that opens the
+//     mindmap for it (onOpenMindmap, handled by app.js)
+//   - search: filters the list to nodes whose name or notes contain the
+//     text, plus their parents so you can see where they are
 //   - move node: dragged via a small grip (⠿), using Pointer Events so it
 //     works with mouse, pen and touch alike (native HTML5 drag-and-drop
 //     isn't supported on touch devices, so we build it ourselves)
@@ -20,32 +23,83 @@
 // leftovers - the same technique virtual-DOM libraries use for lists).
 
 const TreeView = (() => {
+  const COLLAPSED_KEY_PREFIX = 'rpg-notes-collapsed-'; // + campaign id -> [node id, ...]
+
   let listEl = null;
-  const collapsed = new Set(); // ids that are currently collapsed
+  let noResultsEl = null;
+  const collapsed = new Set(); // ids that are currently collapsed (in the current campaign)
+  let collapsedCampaignId = null; // the campaign `collapsed` was loaded for
   const entries = new Map();   // node id -> { li, row, toggle, nameSpan, mapBtn, childUl, cached }
   let onOpenMindmap = null;
+  let query = '';              // current search text, lowercased ('' = no search)
+  let searchHits = new Set();  // ids whose name/notes match `query`
 
   function init(container, callbacks) {
     listEl = container.querySelector('#tree-list');
+    noResultsEl = container.querySelector('#tree-no-results');
     onOpenMindmap = callbacks.onOpenMindmap;
 
     container.querySelector('#tree-new-root-btn').addEventListener('click', () => {
-      const node = Store.addNode('New root node', null);
-      if (node) NotesEditor.open(node.id);
+      const node = Store.addNode('New main node', null);
+      if (node) NotesEditor.open(node.id, { isNew: true });
     });
+
+    container.querySelector('#tree-search').addEventListener('input', e => {
+      query = e.target.value.trim().toLowerCase();
+      render();
+    });
+
+    // forget the collapsed state of campaigns that no longer exist here
+    const campaignIds = new Set(Store.listCampaigns().map(c => c.id));
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(COLLAPSED_KEY_PREFIX) && !campaignIds.has(k.slice(COLLAPSED_KEY_PREFIX.length)))
+      .forEach(k => localStorage.removeItem(k));
+  }
+
+  function loadCollapsed(campaignId) {
+    collapsed.clear();
+    collapsedCampaignId = campaignId;
+    try {
+      const ids = JSON.parse(localStorage.getItem(COLLAPSED_KEY_PREFIX + campaignId) || '[]');
+      if (Array.isArray(ids)) ids.forEach(id => collapsed.add(id));
+    } catch (e) { /* start fully expanded */ }
+  }
+
+  function saveCollapsed() {
+    if (!collapsedCampaignId) return;
+    const ids = [...collapsed].filter(id => Store.getById(id)); // drop deleted nodes
+    try { localStorage.setItem(COLLAPSED_KEY_PREFIX + collapsedCampaignId, JSON.stringify(ids)); } catch (e) { /* ignore */ }
   }
 
   function render() {
     if (!listEl) return;
 
+    const campaignId = Store.getCurrentCampaignId();
+    if (campaignId !== collapsedCampaignId) loadCollapsed(campaignId);
+
     const allNodes = Store.getAll();
     const nodeById = new Map(allNodes.map(n => [n.id, n]));
+
+    // searching: only the matching nodes and their ancestors are shown
+    // (everything expanded), with the matches highlighted
+    let shownNodes = allNodes;
+    searchHits = new Set();
+    if (query) {
+      const shown = new Set();
+      allNodes.forEach(n => {
+        if (!n.name.toLowerCase().includes(query) && !(n.notes || '').toLowerCase().includes(query)) return;
+        searchHits.add(n.id);
+        for (let x = n; x && !shown.has(x.id); x = nodeById.get(x.parentId)) shown.add(x.id);
+      });
+      shownNodes = allNodes.filter(n => shown.has(n.id));
+    }
+    noResultsEl.hidden = !query || searchHits.size > 0;
 
     // group once (O(n)) instead of the old approach of calling
     // Store.getChildren() per node (an O(n) scan each), which made a full
     // render O(n^2) for no reason
     const childrenByParent = new Map();
-    allNodes.forEach(n => {
+    shownNodes.forEach(n => {
       const key = n.parentId || null;
       if (!childrenByParent.has(key)) childrenByParent.set(key, []);
       childrenByParent.get(key).push(n);
@@ -83,8 +137,9 @@ const TreeView = (() => {
 
       const childNodes = childrenByParent.get(node.id) || [];
       updateToggle(entry, childNodes.length);
+      entry.row.classList.toggle('search-hit', searchHits.has(node.id));
 
-      if (childNodes.length > 0 && !collapsed.has(node.id)) {
+      if (childNodes.length > 0 && (query || !collapsed.has(node.id))) {
         if (!entry.childUl) {
           entry.childUl = document.createElement('ul');
           entry.childUl.className = 'tree-children';
@@ -132,6 +187,7 @@ const TreeView = (() => {
       const id = entry.cached.id;
       if (collapsed.has(id)) collapsed.delete(id);
       else collapsed.add(id);
+      saveCollapsed();
       render();
     });
     row.appendChild(toggle);
@@ -150,9 +206,9 @@ const TreeView = (() => {
     // open the mindmap for this node - only main (root) nodes have one, and
     // it's outside .tree-actions so it stays usable in view mode
     const mapBtn = document.createElement('button');
-    mapBtn.className = 'btn-icon tree-map-btn';
-    mapBtn.title = 'Open mindmap';
-    mapBtn.textContent = '🗺';
+    mapBtn.className = 'tree-map-btn';
+    mapBtn.title = 'Open the mindmap for this main node';
+    mapBtn.textContent = '🗺 Mindmap';
     mapBtn.hidden = !!node.parentId;
     mapBtn.addEventListener('click', e => {
       e.stopPropagation();
@@ -171,9 +227,9 @@ const TreeView = (() => {
     addBtn.textContent = '+';
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
-      collapsed.delete(entry.cached.id);
+      if (collapsed.delete(entry.cached.id)) saveCollapsed();
       const child = Store.addNode('New node', entry.cached.id);
-      NotesEditor.open(child.id);
+      NotesEditor.open(child.id, { isNew: true });
     });
 
     const delBtn = document.createElement('button');
@@ -189,6 +245,11 @@ const TreeView = (() => {
 
     actions.append(addBtn, delBtn);
     row.appendChild(actions);
+    // the name only takes the space it needs (so the mindmap button sits
+    // right next to it) - tapping the rest of the row opens the node too
+    row.addEventListener('click', e => {
+      if (e.target === row) NotesEditor.open(entry.cached.id);
+    });
     li.appendChild(row);
     entry.row = row;
 
@@ -206,7 +267,11 @@ const TreeView = (() => {
 
   function updateToggle(entry, childCount) {
     const toggle = entry.toggle;
-    if (childCount > 0) {
+    if (childCount > 0 && query) {
+      toggle.disabled = true; // everything is expanded while searching
+      toggle.classList.remove('tree-toggle-empty');
+      toggle.textContent = '▼';
+    } else if (childCount > 0) {
       toggle.disabled = false;
       toggle.classList.remove('tree-toggle-empty');
       toggle.textContent = collapsed.has(entry.cached.id) ? '▶' : '▼';

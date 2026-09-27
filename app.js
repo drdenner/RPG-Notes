@@ -112,7 +112,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   campaignDeleteBtn.addEventListener('click', () => {
     const name = Store.getCurrentCampaignName();
-    if (!confirm(`Delete campaign "${name}"? This cannot be undone.`)) return;
+    const details = driveConnected
+      ? 'It\'s deleted from this device, and its Google Drive file is moved to the Drive trash (it can be restored from there).\n\n' +
+        'To only remove it from this device and keep it on Drive, use "Remove this campaign from this device" in the Drive menu instead.'
+      : 'It\'s deleted from this device. This cannot be undone. (A copy on Google Drive, if there is one, isn\'t touched.)';
+    if (!confirm(`Delete campaign "${name}"?\n\n${details}`)) return;
     Store.deleteCampaign(Store.getCurrentCampaignId());
   });
 
@@ -209,13 +213,18 @@ document.addEventListener('DOMContentLoaded', () => {
   route();
 
   // --- edit/view mode ---
-  const modeToggleBtn = document.getElementById('mode-toggle-btn');
+  // a two-button switch: the highlighted one is the current mode
+  const modeEditBtn = document.getElementById('mode-edit-btn');
+  const modeViewBtn = document.getElementById('mode-view-btn');
   function updateModeUI(editMode) {
     document.body.classList.toggle('view-mode', !editMode);
-    modeToggleBtn.textContent = editMode ? '👁 View mode' : '✎ Edit mode';
-    modeToggleBtn.classList.toggle('btn-primary', !editMode);
+    modeEditBtn.classList.toggle('active', editMode);
+    modeViewBtn.classList.toggle('active', !editMode);
+    modeEditBtn.setAttribute('aria-pressed', String(editMode));
+    modeViewBtn.setAttribute('aria-pressed', String(!editMode));
   }
-  modeToggleBtn.addEventListener('click', () => AppMode.toggle());
+  modeEditBtn.addEventListener('click', () => AppMode.setEditMode(true));
+  modeViewBtn.addEventListener('click', () => AppMode.setEditMode(false));
   AppMode.subscribe(updateModeUI);
   updateModeUI(AppMode.isEditMode());
 
@@ -228,6 +237,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const driveDisconnectBtn = document.getElementById('drive-disconnect-btn');
   const driveBanner = document.getElementById('drive-banner');
   const driveBannerText = document.getElementById('drive-banner-text');
+  const driveMenuBtn = document.getElementById('drive-menu-btn');
+  const driveMenu = document.getElementById('drive-menu');
+  const driveMenuDanger = document.getElementById('drive-menu-danger');
+
+  // the Drive buttons live in a small menu, so they don't take up the top
+  // bar (and "Pull from Drive" isn't right next to everything else)
+  function setDriveMenuOpen(open) {
+    driveMenu.hidden = !open;
+    driveMenuBtn.setAttribute('aria-expanded', String(open));
+  }
+  driveMenuBtn.addEventListener('click', () => setDriveMenuOpen(driveMenu.hidden));
+  driveMenu.addEventListener('click', e => { if (e.target.closest('button')) setDriveMenuOpen(false); });
+  document.addEventListener('pointerdown', e => {
+    if (!driveMenu.hidden && !driveMenu.contains(e.target) && !driveMenuBtn.contains(e.target)) setDriveMenuOpen(false);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setDriveMenuOpen(false); });
 
   const DRIVE_LABELS = {
     unconfigured: 'Drive: not set up',
@@ -242,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateDriveUI(status, detail) {
     driveDot.className = 'drive-dot drive-dot-' + status;
     driveStatusText.textContent = DRIVE_LABELS[status] || status;
-    driveStatusText.parentElement.title = detail || '';
+    driveMenuBtn.title = detail || '';
 
     const isConnectedish = status === 'connected' || status === 'syncing';
     if (driveConnected !== isConnectedish) {
@@ -251,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     driveConnectBtn.hidden = isConnectedish || status === 'connecting';
     driveSyncBtn.hidden = !isConnectedish;
-    drivePullBtn.hidden = !isConnectedish;
+    driveMenuDanger.hidden = !isConnectedish;
     driveDisconnectBtn.hidden = !isConnectedish;
 
     // the sign-in expired (about once an hour): hard to miss, one tap to

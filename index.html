@@ -12,7 +12,7 @@
   a stale cached copy. Hard refresh (Ctrl+Shift+R) still works too, but this
   means regular visits pick up updates without needing one.
 -->
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -22,19 +22,29 @@
       <select id="campaign-select" class="campaign-select" title="Switch campaign"></select>
       <button id="campaign-new-btn" class="btn-icon" title="New campaign">+</button>
       <button id="campaign-rename-btn" class="btn-icon" title="Rename campaign">✎</button>
-      <button id="campaign-remove-local-btn" class="btn-icon" hidden title="Remove from this device (it stays on Google Drive)">⏏</button>
       <button id="campaign-delete-btn" class="btn-icon btn-danger" title="Delete campaign">✕</button>
     </div>
-    <button id="mode-toggle-btn" class="btn" title="Switch between edit and view mode">👁 View mode</button>
+    <!-- shows which mode you're in; tap the other one to switch -->
+    <div class="mode-switch" role="group" aria-label="Mode">
+      <button id="mode-edit-btn" class="mode-btn" title="Edit mode: add, change, move and delete">✎ Edit</button>
+      <button id="mode-view-btn" class="mode-btn" title="View mode: read only, nothing can be changed by accident">👁 View</button>
+    </div>
     <div class="io-actions">
-      <div class="drive-status" title="">
+      <button id="drive-menu-btn" class="btn drive-menu-btn" aria-haspopup="true" aria-expanded="false">
         <span id="drive-dot" class="drive-dot"></span>
         <span id="drive-status-text">Drive: not connected</span>
+        <span class="drive-menu-caret">▾</span>
+      </button>
+      <div id="drive-menu" class="drive-menu" hidden>
+        <button id="drive-connect-btn" class="btn">Connect Drive</button>
+        <button id="drive-sync-btn" class="btn" hidden title="Sync every campaign with Google Drive - the newest version wins">Sync now</button>
+        <button id="campaign-remove-local-btn" class="btn" hidden title="The campaign is saved to Google Drive first and stays there">⏏ Remove this campaign from this device</button>
+        <button id="drive-disconnect-btn" class="btn" hidden>Disconnect Drive</button>
+        <div id="drive-menu-danger" class="drive-menu-danger" hidden>
+          <button id="drive-pull-btn" class="btn btn-danger-outline">Pull from Drive…</button>
+          <p class="drive-menu-note">Replaces ALL campaigns on this device with the ones on Google Drive.</p>
+        </div>
       </div>
-      <button id="drive-connect-btn" class="btn">Connect Drive</button>
-      <button id="drive-sync-btn" class="btn" hidden title="Sync every campaign with Google Drive - the newest version wins">Sync now</button>
-      <button id="drive-pull-btn" class="btn" hidden title="Replace ALL campaigns on this device with the ones on Google Drive">Pull from Drive</button>
-      <button id="drive-disconnect-btn" class="btn" hidden>Disconnect Drive</button>
     </div>
   </header>
 
@@ -47,8 +57,12 @@
     <p class="no-campaign-msg">No campaigns on this device. Create one with <strong>+</strong>, or connect Google Drive and pick a ☁ campaign from the list.</p>
     <section id="tree-view" class="view">
       <div id="tree-list-wrap" class="tree-list-wrap">
+        <div class="tree-search-wrap">
+          <input id="tree-search" class="tree-search" type="search" placeholder="Search names and notes…" autocomplete="off">
+        </div>
+        <p id="tree-no-results" class="tree-no-results" hidden>No matches.</p>
         <ul id="tree-list" class="tree-list"></ul>
-        <button id="tree-new-root-btn" class="btn btn-primary mindmap-float-btn">+ New root node</button>
+        <button id="tree-new-root-btn" class="btn btn-primary mindmap-float-btn">+ New main node</button>
       </div>
     </section>
 
@@ -56,7 +70,8 @@
       <div id="mindmap-canvas" class="mindmap-canvas">
         <nav class="mindmap-bar">
           <button id="mindmap-back-btn" class="btn" title="Back to the list">← List</button>
-          <select id="mindmap-main-select" class="mindmap-main-select" title="Switch main node"></select>
+          <select id="mindmap-main-select" class="mindmap-main-select" title="Switch to another main node"></select>
+          <button id="mindmap-arrange-btn" class="btn" title="Lay out every node in this mindmap as a tidy tree">Arrange</button>
         </nav>
         <div id="mindmap-world" class="mindmap-world">
           <svg id="mindmap-svg" class="mindmap-svg"></svg>
@@ -66,12 +81,12 @@
     </section>
   </main>
 
-  <script src="store.js?v=15"></script>
+  <script src="store.js?v=16"></script>
   <script src="app-mode.js?v=1"></script>
-  <script src="notes-editor.js?v=5"></script>
+  <script src="notes-editor.js?v=6"></script>
   <script src="drive-sync.js?v=22"></script>
-  <script src="tree-view.js?v=4"></script>
-  <script src="mindmap-view.js?v=9"></script>
-  <script src="app.js?v=16"></script>
+  <script src="tree-view.js?v=5"></script>
+  <script src="mindmap-view.js?v=10"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

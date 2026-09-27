@@ -324,17 +324,49 @@ const Store = (() => {
   function addNode(name, parentId = null) {
     if (!currentCampaignId) return null;
     const parent = parentId ? nodes.find(n => n.id === parentId) : null;
+    // a main node is always the first node of its own mindmap, so where it
+    // sits doesn't matter much; a child gets a free spot near its parent
+    const spot = parent ? freeChildSpot(parent) : { x: 300, y: 80 };
     const node = {
       id: generateId(),
       name: name || 'New node',
       notes: '',
       parentId: parent ? parent.id : null,
-      x: parent ? parent.x + 120 + Math.random() * 40 : 300 + Math.random() * 200,
-      y: parent ? parent.y + 100 + Math.random() * 40 : 80 + Math.random() * 200
+      x: spot.x,
+      y: spot.y
     };
     nodes.push(node);
     notify();
     return { ...node };
+  }
+
+  // the first free slot in the rows below `parent` (middle slot first, then
+  // alternating right/left), so new children don't land on top of each
+  // other. "Free" = not too close to any node of the same mindmap (the
+  // parent's main node and everything under it)
+  function freeChildSpot(parent) {
+    const SLOT_W = 190;
+    const ROW_H = 110;
+    let root = parent;
+    while (root.parentId) root = nodes.find(n => n.id === root.parentId) || { parentId: null, id: root.id };
+    const mindmap = [];
+    const queue = [root.id];
+    while (queue.length) {
+      const id = queue.shift();
+      nodes.forEach(n => {
+        if (n.id === id) mindmap.push(n);
+        if (n.parentId === id) queue.push(n.id);
+      });
+    }
+    const taken = (x, y) => mindmap.some(n => Math.abs(n.x - x) < SLOT_W - 30 && Math.abs(n.y - y) < ROW_H - 30);
+    for (let row = 1; row <= 20; row++) {
+      const y = parent.y + row * ROW_H;
+      for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+        const x = parent.x + k * SLOT_W;
+        if (x >= 0 && !taken(x, y)) return { x, y };
+      }
+    }
+    return { x: parent.x, y: parent.y + ROW_H };
   }
 
   // applies several changes to one node as ONE mutation (one save, one
@@ -401,6 +433,20 @@ const Store = (() => {
   // updates only the mindmap position, doesn't touch the hierarchy
   function moveNodePosition(id, x, y) {
     updateNode(id, { x, y });
+  }
+
+  // moves many nodes at once (the mindmap's "Arrange") as ONE mutation:
+  // `positions` is { nodeId: { x, y } }
+  function setPositions(positions) {
+    let changed = false;
+    nodes.forEach(n => {
+      const p = positions[n.id];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+      n.x = Math.max(0, Math.round(p.x));
+      n.y = Math.max(0, Math.round(p.y));
+      changed = true;
+    });
+    if (changed) notify();
   }
 
   // --- campaign files (what Google Drive sync reads and writes) ---
@@ -548,7 +594,7 @@ const Store = (() => {
 
   return {
     getAll, getById, getChildren,
-    addNode, updateNode, deleteNode, moveNode, moveNodePosition,
+    addNode, updateNode, deleteNode, moveNode, moveNodePosition, setPositions,
     subscribe, exportJSON, getUpdatedAt, setCampaignData, addCampaignFromData,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,
     createCampaign, switchCampaign, renameCampaign, deleteCampaign, replaceAllCampaigns,

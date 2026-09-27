@@ -2,24 +2,34 @@
 
 A small note-taking app for tabletop RPG campaigns. Notes are organized as a
 tree of nodes (chapters, NPCs, places, ...) shown as a nested **List**, where
-each main node (root node, e.g. a chapter) can be opened as a freely arranged
-**Mindmap**. Each node has a name and
+each **main node** (a top-level node, e.g. a chapter) can be opened as a
+freely arranged **Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
 - Multiple independent campaigns, one active at a time
-- Edit mode / view mode (view mode locks everything, for use during a session)
-- Works with mouse, pen and touch, so it's usable on a tablet
-- The List is the start page. The 🗺 button on a main node opens its
-  Mindmap: that node and everything under it, with lines, where tapping a
-  node opens its notes. **← List** goes back, and the dropdown next to it
-  switches to another main node. The browser's/tablet's back button also
-  returns to the list, and the app remembers an open mindmap, so reloading
-  or reopening the app lands on it again. Only the open main node is
-  rendered, which keeps big campaigns fast
+- **Edit / View** switch in the top bar (the highlighted half is the current
+  mode). View mode locks everything, for use during a session
+- Works with mouse, pen and touch, so it's usable on a tablet. Opening a
+  node to read it doesn't bring up the on-screen keyboard; a new node opens
+  with its placeholder name selected, so you can just type
+- The List is the start page. **Search** above it filters to nodes whose
+  name or notes match (with their parents), and which nodes are collapsed is
+  remembered per campaign
+- **🗺 Mindmap** next to a main node opens its mindmap: that node and
+  everything under it, with lines, where tapping a node opens its notes.
+  **← List** goes back, the dropdown next to it switches to another main
+  node, and **Arrange** (edit mode) lays the whole mindmap out as a tidy
+  tree. It zooms out to fit when opened. The browser's/tablet's back button
+  also returns to the list, and the app remembers an open mindmap, so
+  reloading or reopening the app lands on it again. Only the open main node
+  is rendered, which keeps big campaigns fast
+- New child nodes are placed on a free spot below their parent, so they
+  don't pile up in the mindmap
 - Move a node to a new parent by dragging its ⠿ grip in the List view; in the
   Mindmap, dragging a node only changes its position
 - Everything is saved locally in the browser (`localStorage`)
-- Optional sync via Google Drive, to use the same notes on several devices
+- Optional sync via Google Drive, to use the same notes on several devices.
+  Everything Drive-related is in the **Drive** menu at the top right
 
 It's plain HTML, CSS and vanilla JavaScript: no build step, no dependencies
 (apart from Google's sign-in library, loaded only for Drive sync).
@@ -75,8 +85,8 @@ files it created itself, never the rest of your Drive.
   on Drive but not on this device, marked **☁**. Picking one downloads it
   and opens it. Campaigns stay on the device after you switch away, as an
   offline copy.
-- **⏏ Remove from this device** (next to the campaign name, only while
-  connected) saves the campaign to Drive first and deletes the local copy
+- **⏏ Remove this campaign from this device** (in the Drive menu, only
+  while connected) saves the campaign to Drive first and deletes the local copy
   only after Drive has confirmed it. If that fails (offline, sign-in
   expired), nothing is removed. The Drive file is kept, so the campaign
   shows up as **☁** in the dropdown again.
@@ -156,6 +166,7 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-data-<campaignId>` | That campaign's `nodes` array |
 | `rpg-notes-updated-<campaignId>` | When that campaign last changed (ISO timestamp) |
 | `rpg-notes-edit-mode` | `"true"` / `"false"` |
+| `rpg-notes-collapsed-<campaignId>` | Ids of the nodes collapsed in the List |
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
 | `rpg-notes-drive-unsynced` | Ids of campaigns with changes that haven't reached Drive yet |
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |

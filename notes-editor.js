@@ -15,6 +15,10 @@
 // what you typed. (A bar rather than confirm() dialogs, since a
 // three-way choice doesn't fit OK/Cancel.)
 //
+// Opening an existing node doesn't focus anything, so a tablet's keyboard
+// doesn't pop up when you only want to read. A just-created node ({ isNew })
+// gets its placeholder name selected, so typing replaces it.
+//
 // Safety note: the raw text is stored as-is (see Store.updateNode).
 // Turning it into HTML always escapes the text FIRST and only then
 // re-introduces the two safe patterns below (**bold** and auto-links), so
@@ -140,7 +144,7 @@ const NotesEditor = (() => {
     previewEl.innerHTML = raw ? renderNotes(textareaEl.value) : '';
   }
 
-  function open(nodeId) {
+  function open(nodeId, { isNew = false } = {}) {
     build();
     currentId = nodeId;
     const node = Store.getById(nodeId);
@@ -149,7 +153,10 @@ const NotesEditor = (() => {
     textareaEl.value = savedNotes = node.notes || '';
     applyMode();
     overlayEl.classList.add('open');
-    if (AppMode.isEditMode()) titleInputEl.focus();
+    if (isNew && AppMode.isEditMode()) {
+      titleInputEl.focus();
+      titleInputEl.select();
+    }
   }
 
   function save() {
@@ -194,6 +201,9 @@ const NotesEditor = (() => {
   // just hides the panel - no saving, nothing that could fail and leave
   // the panel stuck open
   function close() {
+    // drop focus, or the title field would keep it while hidden and bring
+    // a tablet's keyboard back the next time the panel opens
+    if (panelEl.contains(document.activeElement)) document.activeElement.blur();
     hideUnsavedBar();
     overlayEl.classList.remove('open');
     currentId = null;

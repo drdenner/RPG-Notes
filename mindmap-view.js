@@ -7,6 +7,8 @@
 //   app.js). The bar at the top goes back to the list, or switches to
 //   another main node via a dropdown. The data doesn't change at all: which
 //   nodes are shown is just a filter on parentId.
+// - "Arrange" (edit mode) lays the whole mindmap out as a tidy tree, e.g.
+//   for a chapter that was built in the list.
 // - Panning/zoom work by transforming the whole world layer (translate+scale),
 //   node positions (x,y) are always in "world" coordinates and unaffected by zoom.
 // - While dragging, the DOM and lines are updated directly (no full
@@ -70,6 +72,7 @@ const MindmapView = (() => {
 
     container.querySelector('#mindmap-back-btn').addEventListener('click', () => callbacks.onBack());
     mainSelectEl.addEventListener('change', () => callbacks.onSwitch(mainSelectEl.value));
+    container.querySelector('#mindmap-arrange-btn').addEventListener('click', arrange);
 
     container.querySelector('#mindmap-new-node-btn').addEventListener('click', () => {
       // a new child of the main node, placed roughly in the middle of the
@@ -80,7 +83,7 @@ const MindmapView = (() => {
       const node = Store.addNode('New node', mainNodeId);
       if (!node) return;
       Store.moveNodePosition(node.id, worldX, worldY);
-      NotesEditor.open(node.id);
+      NotesEditor.open(node.id, { isNew: true });
     });
 
     // zoom with the mouse wheel (desktop) - just a transform, no per-node work
@@ -176,8 +179,8 @@ const MindmapView = (() => {
     return mainNodeId;
   }
 
-  // pans (keeping the zoom) so the shown nodes are centered in the
-  // viewport, or start at the top-left if they don't fit
+  // zooms out if needed and pans so the shown nodes are centered in the
+  // viewport, or start at the top-left if they still don't fit
   function centerView() {
     const rect = canvasEl.getBoundingClientRect();
     if (!rect.width || entries.size === 0) return;
@@ -190,11 +193,61 @@ const MindmapView = (() => {
     });
     const MARGIN = 40;
     const TOP = 70; // room for the bar at the top
+    // zoom out (never in, never below 50%) so the whole mindmap fits,
+    // e.g. a wide chapter on a tablet held upright
+    const fit = Math.min((rect.width - 2 * MARGIN) / (maxX - minX), (rect.height - TOP - MARGIN) / (maxY - minY));
+    zoom = clampZoom(Math.max(0.5, Math.min(1, fit)));
     const w = (maxX - minX) * zoom;
     const h = (maxY - minY) * zoom;
     panX = w + 2 * MARGIN < rect.width ? (rect.width - w) / 2 - minX * zoom : MARGIN - minX * zoom;
     panY = h + TOP + MARGIN < rect.height ? TOP + (rect.height - TOP - h) / 2 - minY * zoom : TOP - minY * zoom;
     applyTransform();
+  }
+
+  // lays the main node's subtree out as a tree, top-down: every leaf gets
+  // its own column, a parent sits centered above its children, one row
+  // per level. The main node keeps its position. One Store mutation.
+  function arrange() {
+    const main = Store.getById(mainNodeId);
+    if (!main) return;
+    const ok = confirm(`Arrange the mindmap for "${main.name}"?\n\nEvery node in it is moved into a tidy tree. Positions you've set by hand are replaced.`);
+    if (!ok) return;
+
+    const COLUMN_W = 240; // wider than a node's max width (220px), so boxes never overlap
+    const ROW_H = 130;
+    const childrenOf = new Map();
+    Store.getAll().forEach(n => {
+      if (!childrenOf.has(n.parentId)) childrenOf.set(n.parentId, []);
+      childrenOf.get(n.parentId).push(n);
+    });
+
+    const positions = {};
+    let nextColumn = 0;
+    // returns the node's x (in columns)
+    function place(node, depth) {
+      const kids = childrenOf.get(node.id) || [];
+      let column;
+      if (kids.length === 0) {
+        column = nextColumn++;
+      } else {
+        const kidColumns = kids.map(k => place(k, depth + 1));
+        column = (kidColumns[0] + kidColumns[kidColumns.length - 1]) / 2;
+      }
+      positions[node.id] = { x: column * COLUMN_W, y: depth * ROW_H };
+      return column;
+    }
+    place(main, 0);
+
+    // keep the main node where it was - but never push anything off the
+    // left/top edge (positions can't be negative)
+    let dx = main.x - positions[main.id].x;
+    const minX = Math.min(...Object.values(positions).map(p => p.x));
+    dx = Math.max(dx, 40 - minX);
+    Object.values(positions).forEach(p => { p.x += dx; p.y += main.y; });
+
+    Store.setPositions(positions);
+    renderedKey = null; // re-center on the new layout
+    render();
   }
 
   // "Chapter 1 ▾" dropdown: every main node, to jump between them
@@ -396,7 +449,7 @@ const MindmapView = (() => {
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
       const child = Store.addNode('New node', entry.cached.id);
-      NotesEditor.open(child.id);
+      NotesEditor.open(child.id, { isNew: true });
     });
     div.appendChild(addBtn);
 
