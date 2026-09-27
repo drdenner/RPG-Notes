@@ -163,7 +163,7 @@ body.view-mode .tree-name {
 }
 
 body.view-mode .mindmap-node {
-  cursor: default;
+  cursor: pointer; /* can't be dragged, but tapping still goes into it */
 }
 
 /* --- generic buttons --- */
@@ -373,6 +373,19 @@ body.no-campaign #mindmap-new-root-btn {
   background: rgba(201, 162, 91, 0.12);
 }
 
+/* "▸ 3": the node has 3 children, tap it to go in */
+.mindmap-node-count {
+  display: block;
+  margin-top: 4px;
+  pointer-events: none;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+.mindmap-node-count[hidden] {
+  display: none;
+}
+
 /* small marker so you can tell at a glance which nodes have notes */
 .tree-name.has-notes {
   border-left: 2px solid var(--accent-gold);
@@ -441,18 +454,73 @@ body.no-campaign #mindmap-new-root-btn {
   transform-origin: 0 0;
 }
 
-.mindmap-svg {
+/* "← | Campaign › Chapter 1 › ..." - like the float button, it sits on
+   .mindmap-canvas, outside the pan/zoom transform */
+.mindmap-breadcrumb {
   position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-  overflow: visible;
+  top: 12px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 3px 8px var(--shadow);
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
-.mindmap-link {
-  stroke: var(--accent-gold);
-  stroke-width: 2;
-  opacity: 0.55;
+.mindmap-breadcrumb[hidden] {
+  display: none;
+}
+
+.mindmap-back-btn {
+  flex-shrink: 0;
+  min-width: 40px;
+}
+
+.mindmap-crumb {
+  flex-shrink: 0;
+  padding: 6px 6px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mindmap-crumb:hover {
+  color: var(--accent-gold-bright);
+}
+
+.mindmap-crumb.current {
+  color: var(--accent-gold-bright);
+  font-weight: 600;
+}
+
+.mindmap-crumb-sep {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.mindmap-empty {
+  position: absolute;
+  top: 45%;
+  left: 16px;
+  right: 16px;
+  text-align: center;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.mindmap-empty[hidden] {
+  display: none;
 }
 
 .mindmap-node {
@@ -486,6 +554,19 @@ body.no-campaign #mindmap-new-root-btn {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 0.92rem;
+}
+
+/* "▸ 3": the node has 3 children, tap it to go in */
+.mindmap-node-count {
+  display: block;
+  margin-top: 4px;
+  pointer-events: none;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+.mindmap-node-count[hidden] {
+  display: none;
 }
 
 /* small marker so you can tell at a glance which nodes have notes */
@@ -532,6 +613,27 @@ body.no-campaign #mindmap-new-root-btn {
 
 .mindmap-node-add:hover {
   background: var(--accent-gold-bright);
+}
+
+/* opens the node's notes (tapping the node itself goes into it) - stays
+   visible in view mode too, and isn't hidden behind hover */
+.mindmap-node-notes {
+  position: absolute;
+  bottom: -10px;
+  right: -10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mindmap-node-notes:hover {
+  border-color: var(--accent-gold);
 }
 
 /* hide +/✕ behind hover ONLY on devices with a precise pointer (mouse) -

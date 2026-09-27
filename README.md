@@ -8,6 +8,12 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 - Multiple independent campaigns, one active at a time
 - Edit mode / view mode (view mode locks everything, for use during a session)
 - Works with mouse, pen and touch, so it's usable on a tablet
+- The Mindmap shows one level at a time: the root nodes, or the direct
+  children of the node you're in. Tap a node to go into it, and use the ←
+  button or the breadcrumb at the top to go back up. A node's notes open from
+  its 📝 button (or the current node's name in the breadcrumb), and "▸ 3"
+  means it has 3 children. Only the current level is rendered, which keeps
+  big campaigns fast
 - Move a node to a new parent by dragging its ⠿ grip in the List view; in the
   Mindmap, dragging a node only changes its position
 - Everything is saved locally in the browser (`localStorage`)
@@ -51,37 +57,38 @@ files it created itself, never the rest of your Drive.
 
 ### How it syncs
 
-- All files live in a Drive folder called **RPG Notes**.
-- Each campaign has its own file, named after the campaign: `<name>.json`.
-  It is uploaded automatically about 10 seconds after each change, or right
-  away when the tab is hidden or closed.
-- **Backup** writes `<name>-backup.json`, which only changes when you press
-  the button.
-- Renaming a campaign renames its Drive files. Deleting a campaign moves its
-  Drive files to Drive's trash. You can delete every campaign, which leaves
+- All files live in a Drive folder called **RPG Notes**. Each campaign is one
+  file, named after the campaign: `<name>.json`. The app always finds the file
+  by that name.
+- **Newest wins:** every change stamps the campaign with `updatedAt`, which
+  is saved in the file too. When syncing a campaign, the app compares the
+  local `updatedAt` with the file's, and the newer one overwrites the other.
+  If neither has one, Drive wins. Timestamps come from each device's own
+  clock, so keep device clocks roughly right.
+- The current campaign is synced when you connect and when you switch
+  campaign. After that, each change is uploaded about 10 seconds later (or
+  right away when the tab is hidden or closed), without re-checking Drive.
+  So avoid editing the same campaign on two devices at the same time.
+- **Sync now** syncs **every** campaign, and adds campaigns that only exist
+  on Drive (e.g. created on another device).
+- **Pull from Drive** (after asking for OK) deletes **all** campaigns on this
+  device and replaces them with every `<name>.json` in the RPG Notes folder.
+  If no file can be read, nothing is changed.
+- A Drive file that can't be read is never overwritten. It's left untouched
+  and reported, and old `-backup.json` / `-conflict-` files from earlier
+  versions are ignored. Drive keeps older versions of every file itself
+  (right-click the file, **Manage versions**).
+- Renaming a campaign renames its Drive file. Deleting a campaign moves its
+  Drive file to Drive's trash. You can delete every campaign, which leaves
   the app empty.
 - Campaign names must map to different file names, so creating "A:B" when
   "A/B" exists gives "A:B (2)". Both would otherwise become `A-B.json`.
 - Nothing is created automatically: on a new device the app starts with no
-  campaigns. Create one with **+**, or use **Pull from Drive**.
-- The list of campaigns is stored per browser. To open a campaign on a new
-  device, connect Drive there and create a campaign with **exactly the same
-  name**. Its contents are then fetched from Drive. Or use **Pull from Drive**.
-- **Pull from Drive** (after asking for OK) deletes **all** campaigns on this
-  device and replaces them with every `<name>.json` in the RPG Notes folder.
-  Backup and old `-conflict-` files are ignored, and unreadable files are
-  skipped and listed. If no file can be read, nothing is changed.
-- **Newest wins:** every change stamps the campaign with `updatedAt`, which
-  is saved in the JSON file too. When connecting (or switching campaign),
-  the app compares the local `updatedAt` with the Drive file's, and the newer
-  one overwrites the other. If neither has one, Drive wins. Once connected,
-  edits are pushed without re-checking Drive, so avoid editing the same
-  campaign on two devices at the same time. Timestamps come from each
-  device's own clock, so keep device clocks roughly right.
-- If the Drive file can't be read, it's left untouched and syncing that
-  campaign is paused until the next connect.
-- If the sign-in expires and can't be renewed silently, the status shows
-  **Drive: sign in again**. Click **Connect Drive** to continue.
+  campaigns. Connect Drive and press **Sync now** (or **Pull from Drive**),
+  or create one with **+**.
+- The Google sign-in lasts about an hour. When it expires, the status shows
+  **Drive: sign in again**. Click **Connect Drive** to continue. Changes made
+  meanwhile are uploaded at the next sync, since they're newer.
 - **Disconnect Drive** uploads any pending change first, and the app won't
   reconnect automatically until you click **Connect Drive** again.
 
@@ -118,7 +125,9 @@ authoritative description is at the top of `store.js`.
 - Children are never stored on a node. They're derived from `parentId`.
 - `notes` is plain text, never HTML. `**bold**` and URLs are only formatted
   when displayed.
-- `x`/`y` are the node's position in the mindmap.
+- `x`/`y` are the node's position in the mindmap. The mindmap only shows
+  one level (siblings) at a time, so positions only matter relative to a
+  node's siblings.
 - Loading a file repairs rather than rejects: missing fields get defaults, a
   `parentId` pointing at a missing node makes it a root, parent cycles are
   broken, duplicated ids get a fresh id. Unknown extra fields on a node are
@@ -132,6 +141,5 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-current-campaign` | Id of the active campaign |
 | `rpg-notes-data-<campaignId>` | That campaign's `nodes` array |
 | `rpg-notes-updated-<campaignId>` | When that campaign last changed (ISO timestamp) |
-| `rpg-notes-corrupt-<campaignId>-<timestamp>` | Saved data that couldn't be read, kept aside before the campaign started over |
 | `rpg-notes-edit-mode` | `"true"` / `"false"` |
-| `rpg-notes-drive-*` | Drive sync state: folder/file ids, whether you disconnected |
+| `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |

@@ -14,8 +14,8 @@
 // should be able to load old data just by honoring this shape)
 // ============================================================================
 //
-// An export file (Store.exportJSON(), also what ends up in the synced
-// rpg-notes-<campaignId>.json on Google Drive) looks like:
+// A campaign file (Store.exportJSON(), what ends up in "<campaign name>.json"
+// on Google Drive) looks like:
 //
 //   {
 //     "schemaVersion": 1,
@@ -26,14 +26,14 @@
 //   }
 //
 // "updatedAt" is when the campaign's data last changed (null if never,
-// e.g. a freshly seeded or created campaign). Google Drive sync compares
+// e.g. a freshly created campaign). Google Drive sync compares
 // it between this device and Drive, and the newer one wins.
 //
-// It only ever contains ONE campaign's nodes (the currently active one) -
-// campaigns are never mixed together in a single export file.
+// It only ever contains ONE campaign's nodes - campaigns are never mixed
+// together in a single file.
 //
-// Store.importJSON() requires this envelope shape (a "nodes" array) - it
-// does not accept a bare array of nodes.
+// Loading a file requires this envelope shape (a "nodes" array) - a bare
+// array of nodes is not accepted.
 //
 // Each <node> is a flat object:
 //   {
@@ -52,7 +52,7 @@
 //     for the renderer. It is NEVER HTML, so it's safe to store/display as-is.
 //   - x/y are only used by the mindmap view (pixel position on its canvas)
 //
-// importJSON() normalizes/repairs incoming nodes defensively (missing
+// normalizeNodes() repairs incoming nodes defensively (missing
 // fields get sane defaults, a parentId pointing at a non-existent node
 // becomes a root node, parent cycles are broken, and a duplicated id is
 // replaced with a fresh one) rather than trusting the file blindly, since it may
@@ -61,8 +61,7 @@
 // of this app can add fields without older exports losing them.
 //
 // Want to extend the data model later (e.g. tags, color, node type)? Add
-// the fields here and in the normalization step
-// inside importJSON.
+// the fields here and in normalizeNodes.
 
 const Store = (() => {
   const CAMPAIGNS_KEY = 'rpg-notes-campaigns'; // [{id, name}, ...]
@@ -74,7 +73,7 @@ const Store = (() => {
   let nodes = [];
   const dataListeners = [];        // fired on real data mutations (add/rename/delete/move/notes)
   const campaignListeners = [];    // fired when the active campaign changes (switch/create/delete)
-  const campaignDeletedListeners = []; // fired with a campaign's id right after it's deleted, so drive-sync.js can clean up its Drive files
+  const campaignDeletedListeners = []; // fired with (id, name) right after a campaign is deleted, so drive-sync.js can trash its Drive file
 
   function dataKey(campaignId) {
     return 'rpg-notes-data-' + campaignId;
@@ -94,14 +93,12 @@ const Store = (() => {
     return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   }
 
-  // stamps the campaign as changed, saves, and notifies every subscriber
-  // (views, Drive sync). importJSON passes the Drive file's own updatedAt
-  // when pulling, so a pull doesn't make the local copy look newer.
-  function notify(updatedAt = new Date().toISOString()) {
-    if (updatedAt) trySetItem(updatedAtKey(currentCampaignId), updatedAt);
-    else localStorage.removeItem(updatedAtKey(currentCampaignId));
+  // stamps the current campaign as changed, saves, and notifies every
+  // subscriber (views, Drive sync) that data changed
+  function notify() {
+    trySetItem(updatedAtKey(currentCampaignId), new Date().toISOString());
     save();
-    dataListeners.forEach(fn => fn());
+    dataListeners.forEach(fn => fn({ fromDrive: false }));
   }
 
   // notifies subscribers that the ACTIVE campaign changed (not its data) -
@@ -156,26 +153,21 @@ const Store = (() => {
       if (!Array.isArray(parsed)) throw new Error('saved data is not a list of nodes');
       return parsed;
     } catch (e) {
+      // starts over empty, and forgets its updatedAt so the next Drive sync
+      // sees Drive as newer and fetches the campaign back from there
       console.error('Could not read saved notes for this campaign, starting fresh.', e);
-      preserveCorruptData(campaignId, raw);
+      localStorage.removeItem(dataKey(campaignId));
+      localStorage.removeItem(updatedAtKey(campaignId));
+      alert('The saved notes for this campaign could not be read, so it starts out empty.\n\nIf it is on Google Drive, press "Sync now" to fetch it from there.');
       return [];
     }
   }
 
-  // moves unreadable saved data to its own key before the campaign starts
-  // over empty, so the next save() can't overwrite it. Removing the
-  // original first frees its space, so the copy fits even when storage is
-  // nearly full; if the copy still fails, the original is put back.
-  function preserveCorruptData(campaignId, raw) {
-    const backupKey = `rpg-notes-corrupt-${campaignId}-${Date.now()}`;
-    localStorage.removeItem(dataKey(campaignId));
-    try {
-      localStorage.setItem(backupKey, raw);
-      alert(`The saved notes for this campaign could not be read, so it starts out empty.\n\nThe unreadable data was kept in this browser's localStorage under the key "${backupKey}".`);
-    } catch (e) {
-      try { localStorage.setItem(dataKey(campaignId), raw); } catch (e2) { /* nothing more we can do */ }
-      alert('The saved notes for this campaign could not be read, and there wasn\'t room to keep a copy. The campaign starts out empty - the unreadable data will be overwritten by your next change.');
-    }
+  // writes any campaign's nodes + updatedAt straight to localStorage
+  function writeCampaignData(campaignId, campaignNodes, updatedAt) {
+    trySetItem(dataKey(campaignId), JSON.stringify(campaignNodes));
+    if (updatedAt) trySetItem(updatedAtKey(campaignId), updatedAt);
+    else localStorage.removeItem(updatedAtKey(campaignId));
   }
 
   function load() {
@@ -285,7 +277,7 @@ const Store = (() => {
     const idx = campaigns.findIndex(c => c.id === id);
     if (idx === -1) return false;
 
-    campaigns.splice(idx, 1);
+    const [deleted] = campaigns.splice(idx, 1);
     localStorage.removeItem(dataKey(id));
     localStorage.removeItem(updatedAtKey(id));
 
@@ -294,7 +286,7 @@ const Store = (() => {
       nodes = currentCampaignId ? loadCampaignNodes(currentCampaignId) : [];
     }
     saveCampaignRegistry();
-    campaignDeletedListeners.forEach(fn => fn(id)); // lets drive-sync.js trash its Drive files
+    campaignDeletedListeners.forEach(fn => fn(id, deleted.name)); // lets drive-sync.js trash its Drive file
     notifyCampaignChanged();
     return true;
   }
@@ -312,10 +304,6 @@ const Store = (() => {
 
   function getChildren(parentId) {
     return nodes.filter(n => n.parentId === parentId).map(n => ({ ...n }));
-  }
-
-  function getRoots() {
-    return getChildren(null);
   }
 
   // is `maybeAncestorId` an ancestor of (or equal to) `id`?
@@ -386,14 +374,6 @@ const Store = (() => {
     if (changed) notify();
   }
 
-  function renameNode(id, newName) {
-    updateNode(id, { name: newName });
-  }
-
-  function updateNodeNotes(id, text) {
-    updateNode(id, { notes: text });
-  }
-
   // deletes a node and all its children (recursively)
   function deleteNode(id) {
     const toDelete = new Set([id]);
@@ -421,12 +401,11 @@ const Store = (() => {
     updateNode(id, { x, y });
   }
 
-  // --- export / import ---
+  // --- campaign files (what Google Drive sync reads and writes) ---
 
-  // exports the given campaign (defaults to the current one). Any other
-  // campaign is read from its saved copy in localStorage, which save()
-  // keeps up to date on every change - drive-sync.js needs this to flush a
-  // pending upload for a campaign the user has already switched away from
+  // the given campaign (defaults to the current one) as a campaign file.
+  // Any other campaign is read from its saved copy in localStorage, which
+  // save() keeps up to date on every change
   function exportJSON(campaignId) {
     const exportNodes = !campaignId || campaignId === currentCampaignId ? nodes : loadCampaignNodes(campaignId);
     return JSON.stringify({
@@ -438,24 +417,43 @@ const Store = (() => {
     }, null, 2);
   }
 
-  // `keepUpdatedAt` (used by Drive sync) keeps the file's updatedAt
-  // instead of stamping the import as a new local change
-  function importJSON(jsonString, { keepUpdatedAt = false } = {}) {
-    const parsed = JSON.parse(jsonString);
-    nodes = normalizeNodes(parsed);
-    notify(keepUpdatedAt ? readUpdatedAt(parsed) : undefined);
+  // replaces ANY campaign's nodes with a parsed campaign file's, keeping
+  // the file's updatedAt so the pulled copy doesn't look like a new local
+  // change. Throws (changing nothing) if the file isn't readable.
+  function setCampaignData(campaignId, data) {
+    if (!campaigns.some(c => c.id === campaignId)) return;
+    const newNodes = normalizeNodes(data);
+    writeCampaignData(campaignId, newNodes, readUpdatedAt(data));
+    if (campaignId !== currentCampaignId) return;
+    nodes = newNodes;
+    dataListeners.forEach(fn => fn({ fromDrive: true }));
+  }
+
+  // adds a campaign from a parsed campaign file, without switching to it
+  // (unless there was no current campaign). Throws if it isn't readable.
+  function addCampaignFromData(name, data) {
+    const newNodes = normalizeNodes(data);
+    const id = generateId();
+    campaigns.push({ id, name: uniqueCampaignName(name, null) });
+    writeCampaignData(id, newNodes, readUpdatedAt(data));
+    if (!currentCampaignId) {
+      currentCampaignId = id;
+      nodes = newNodes;
+    }
+    saveCampaignRegistry();
+    notifyCampaignChanged();
   }
 
   function readUpdatedAt(parsed) {
     return parsed && typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null;
   }
 
-  // validates and repairs an export file's nodes (see the header comment);
+  // validates and repairs a campaign file's nodes (see the header comment);
   // throws if the file isn't in the expected shape at all
   function normalizeNodes(parsed) {
     const incoming = parsed && typeof parsed === 'object' ? parsed.nodes : undefined;
     if (!Array.isArray(incoming)) {
-      throw new Error('Invalid format: expected an export file with a "nodes" array.');
+      throw new Error('Invalid format: expected a campaign file with a "nodes" array.');
     }
 
     incoming.forEach(n => {
@@ -508,11 +506,12 @@ const Store = (() => {
   }
 
   // throws away EVERY local campaign and replaces them with `entries`
-  // ([{ name, data }], data = a parsed export file) - used by Drive sync's
+  // ([{ name, data }], data = a parsed campaign file) - used by Drive sync's
   // "Pull from Drive". Every entry is validated before anything is
   // deleted; unreadable ones are skipped and returned by name, and if none
   // are readable nothing changes. Deliberately does NOT fire the
   // campaign-deleted listeners, since those trash the Drive files.
+  // Doesn't fire the data listeners either, so nothing is uploaded back.
   // Stays on a campaign with the same name as the current one, if any.
   function replaceAllCampaigns(entries) {
     const incoming = [];
@@ -532,10 +531,7 @@ const Store = (() => {
       localStorage.removeItem(updatedAtKey(c.id));
     });
     campaigns = incoming.map(c => ({ id: c.id, name: c.name }));
-    incoming.forEach(c => {
-      trySetItem(dataKey(c.id), JSON.stringify(c.nodes));
-      if (c.updatedAt) trySetItem(updatedAtKey(c.id), c.updatedAt);
-    });
+    incoming.forEach(c => writeCampaignData(c.id, c.nodes, c.updatedAt));
     const current = incoming.find(c => c.name === previousName) || incoming[0];
     currentCampaignId = current.id;
     nodes = current.nodes;
@@ -547,9 +543,9 @@ const Store = (() => {
   load();
 
   return {
-    getAll, getById, getChildren, getRoots,
-    addNode, updateNode, renameNode, updateNodeNotes, deleteNode, moveNode, moveNodePosition,
-    save, load, subscribe, exportJSON, importJSON, getUpdatedAt,
+    getAll, getById, getChildren,
+    addNode, updateNode, deleteNode, moveNode, moveNodePosition,
+    subscribe, exportJSON, getUpdatedAt, setCampaignData, addCampaignFromData,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,
     createCampaign, switchCampaign, renameCampaign, deleteCampaign, replaceAllCampaigns,
     subscribeCampaignChange, subscribeCampaignDeleted

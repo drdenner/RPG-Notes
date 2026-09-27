@@ -119,7 +119,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const driveStatusText = document.getElementById('drive-status-text');
   const driveConnectBtn = document.getElementById('drive-connect-btn');
   const driveSyncBtn = document.getElementById('drive-sync-btn');
-  const driveBackupBtn = document.getElementById('drive-backup-btn');
   const drivePullBtn = document.getElementById('drive-pull-btn');
   const driveDisconnectBtn = document.getElementById('drive-disconnect-btn');
 
@@ -128,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     disconnected: 'Drive: not connected',
     connecting: 'Drive: connecting…',
     connected: 'Drive: connected',
-    syncing: 'Drive: saving…',
+    syncing: 'Drive: syncing…',
     error: 'Drive: error',
     reauth: 'Drive: sign in again'
   };
@@ -141,7 +140,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const isConnectedish = status === 'connected' || status === 'syncing';
     driveConnectBtn.hidden = isConnectedish || status === 'connecting';
     driveSyncBtn.hidden = !isConnectedish;
-    driveBackupBtn.hidden = !isConnectedish;
     drivePullBtn.hidden = !isConnectedish;
     driveDisconnectBtn.hidden = !isConnectedish;
   }
@@ -153,24 +151,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     DriveSync.connect();
   });
-  driveSyncBtn.addEventListener('click', () => DriveSync.syncNow());
-  driveDisconnectBtn.addEventListener('click', () => DriveSync.disconnect());
-
-  driveBackupBtn.addEventListener('click', async () => {
-    const original = driveBackupBtn.textContent;
-    driveBackupBtn.disabled = true;
+  driveSyncBtn.addEventListener('click', async () => {
+    driveSyncBtn.disabled = true;
     try {
-      await DriveSync.backupNow();
-      driveBackupBtn.textContent = 'Backed up ✓';
+      const result = await DriveSync.syncNow();
+      if (result && (result.added || result.failed.length)) {
+        let msg = 'Synced all campaigns with Google Drive.';
+        if (result.added) msg += `\n\n${result.added} campaign(s) from Drive were added.`;
+        if (result.failed.length) msg += `\n\nThese couldn't be read on Drive and were left untouched:\n${result.failed.join('\n')}`;
+        alert(msg);
+      }
     } catch (err) {
-      console.error('Backup failed', err);
-      driveBackupBtn.textContent = 'Backup failed';
+      if (!err.reauth) alert('Could not sync with Google Drive: ' + err.message);
     }
-    setTimeout(() => {
-      driveBackupBtn.textContent = original;
-      driveBackupBtn.disabled = false;
-    }, 1500);
+    driveSyncBtn.disabled = false;
   });
+  driveDisconnectBtn.addEventListener('click', () => DriveSync.disconnect());
 
   drivePullBtn.addEventListener('click', async () => {
     const ok = confirm(
