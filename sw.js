@@ -66,7 +66,7 @@ function fetchIndex() {
 async function openApp(event) {
   const fromNetwork = fetchIndex();
   event.waitUntil(fromNetwork.then(res => cacheApp(res.clone())).catch(() => {}));
-  const timeout = new Promise((resolve, reject) => setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT_MS));
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT_MS));
   try {
     return (await Promise.race([fromNetwork, timeout])).clone();
   } catch (err) {
