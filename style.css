@@ -238,8 +238,7 @@ body.view-mode #campaign-new-btn,
 body.view-mode #campaign-rename-btn,
 body.view-mode #campaign-delete-btn,
 body.view-mode #campaign-remove-local-btn,
-body.view-mode #mindmap-arrange-btn,
-body.view-mode .mindmap-hint {
+body.view-mode #mindmap-arrange-btn {
   display: none !important;
 }
 
@@ -351,13 +350,22 @@ body.no-campaign #tree-new-root-btn {
 
 /* --- tree list --- */
 
-/* holds the list + the floating "new root node" button, same pattern as
-   .mindmap-canvas: a positioned container the button can float over */
+/* holds the search field, the list and the floating "new main node"
+   button - a positioned container the button can float over */
 .tree-list-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* floats over the list instead of living in a toolbar, so it stays put
+   while the list scrolls */
+.float-btn {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 10;
 }
 
 .tree-list, .tree-children {
@@ -554,21 +562,6 @@ body.no-campaign #tree-new-root-btn {
 }
 
 /* --- mindmap --- */
-
-/* floats over the canvas instead of living in a toolbar - .mindmap-canvas
-   is position:relative and NOT affected by the pan/zoom transform (that's
-   only applied to #mindmap-world), so this stays put in the viewport */
-.mindmap-float-btn {
-  position: absolute;
-  left: 20px;
-  bottom: 20px;
-  z-index: 10;
-}
-
-.mindmap-hint {
-  color: var(--text-dim);
-  font-size: 0.82rem;
-}
 
 .mindmap-canvas {
   position: relative;

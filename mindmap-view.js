@@ -15,7 +15,8 @@
 //   re-render) to avoid flicker; the Store is only updated once you release.
 // - All input uses Pointer Events (not mouse events), so it behaves the
 //   same with mouse, pen and touch/tablet. One-finger drag on empty canvas
-//   pans, two-finger pinch zooms (plus the mouse wheel on desktop).
+//   pans; two fingers zoom around the point between them and pan along
+//   with it (the mouse wheel zooms around the cursor on desktop).
 // - Tapping a node (no movement) opens it (NotesEditor - rename and notes
 //   both live there); dragging it (movement past a small threshold) moves
 //   it instead, and only works in edit mode.
@@ -48,6 +49,8 @@ const MindmapView = (() => {
   let mainNodeId = null;
   // campaign + main node that was last rendered, to re-center when it changes
   let renderedKey = null;
+  // what the main-node dropdown was last built from, to skip rebuilding it
+  let mainSelectKey = null;
   // { onBack(), onSwitch(mainNodeId) } - navigation is owned by app.js
   let callbacks = null;
 
@@ -60,8 +63,9 @@ const MindmapView = (() => {
   const activePointers = new Map(); // pointerId -> {x,y}
   let panPointerId = null;
   let panStart = null;
-  let pinchStartDist = null;
-  let pinchStartZoom = null;
+  // two-finger gesture: { dist, zoom, worldX, worldY } at its start, where
+  // world x/y is the point between the fingers (kept under them)
+  let pinchStart = null;
 
   function init(container, navCallbacks) {
     callbacks = navCallbacks;
@@ -74,11 +78,16 @@ const MindmapView = (() => {
     mainSelectEl.addEventListener('change', () => callbacks.onSwitch(mainSelectEl.value));
     container.querySelector('#mindmap-arrange-btn').addEventListener('click', arrange);
 
-    // zoom with the mouse wheel (desktop) - just a transform, no per-node work
+    // zoom with the mouse wheel (desktop), around the cursor - just a
+    // transform, no per-node work
     canvasEl.addEventListener('wheel', e => {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      zoom = clampZoom(zoom * factor);
+      const p = toCanvas(e.clientX, e.clientY);
+      const worldX = (p.x - panX) / zoom;
+      const worldY = (p.y - panY) / zoom;
+      zoom = clampZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9));
+      panX = p.x - worldX * zoom;
+      panY = p.y - worldY * zoom;
       applyTransform();
     }, { passive: false });
 
@@ -95,9 +104,19 @@ const MindmapView = (() => {
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
+  // screen (client) coordinates -> coordinates within the canvas
+  function toCanvas(clientX, clientY) {
+    const rect = canvasEl.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  function midpoint(a, b) {
+    return toCanvas((a.x + b.x) / 2, (a.y + b.y) / 2);
+  }
+
   // --- panning (1 finger/mouse) and pinch-zoom (2 fingers) on empty canvas ---
-  // unchanged from before: cheap arithmetic + a single CSS transform write,
-  // never touches individual nodes, so there's nothing to optimize here.
+  // cheap arithmetic + a single CSS transform write, never touches
+  // individual nodes.
 
   function onCanvasPointerDown(e) {
     if (e.target !== canvasEl && e.target !== worldEl) return; // only on empty canvas, not on a node
@@ -111,9 +130,9 @@ const MindmapView = (() => {
       document.addEventListener('pointercancel', onCanvasPointerUp);
     } else if (activePointers.size === 2) {
       panPointerId = null;
-      const pts = [...activePointers.values()];
-      pinchStartDist = pointDistance(pts[0], pts[1]);
-      pinchStartZoom = zoom;
+      const [a, b] = [...activePointers.values()];
+      const mid = midpoint(a, b);
+      pinchStart = { dist: pointDistance(a, b), zoom, worldX: (mid.x - panX) / zoom, worldY: (mid.y - panY) / zoom };
     }
   }
 
@@ -121,10 +140,14 @@ const MindmapView = (() => {
     if (!activePointers.has(e.pointerId)) return;
     activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    if (activePointers.size >= 2 && pinchStartDist) {
-      const pts = [...activePointers.values()];
-      const dist = pointDistance(pts[0], pts[1]);
-      zoom = clampZoom(pinchStartZoom * (dist / pinchStartDist));
+    if (activePointers.size >= 2 && pinchStart) {
+      // zoom by how far the fingers moved apart, and keep the world point
+      // that started between them under their current midpoint
+      const [a, b] = [...activePointers.values()];
+      const mid = midpoint(a, b);
+      zoom = clampZoom(pinchStart.zoom * (pointDistance(a, b) / pinchStart.dist));
+      panX = mid.x - pinchStart.worldX * zoom;
+      panY = mid.y - pinchStart.worldY * zoom;
       applyTransform();
     } else if (panPointerId === e.pointerId) {
       panX = panStart.panX + (e.clientX - panStart.x);
@@ -135,7 +158,7 @@ const MindmapView = (() => {
 
   function onCanvasPointerUp(e) {
     activePointers.delete(e.pointerId);
-    pinchStartDist = null;
+    pinchStart = null;
 
     if (activePointers.size === 0) {
       document.removeEventListener('pointermove', onCanvasPointerMove);
@@ -238,8 +261,13 @@ const MindmapView = (() => {
     render();
   }
 
-  // "Chapter 1 ▾" dropdown: every main node, to jump between them
+  // "Chapter 1 ▾" dropdown: every main node, to jump between them. Only
+  // rebuilt when a main node was added/renamed/removed or another one is
+  // shown - not on every node drag or notes edit
   function renderMainSelect(rootNodes) {
+    const key = JSON.stringify([mainNodeId, rootNodes.map(n => [n.id, n.name])]);
+    if (key === mainSelectKey) return;
+    mainSelectKey = key;
     mainSelectEl.innerHTML = '';
     rootNodes.forEach(n => {
       const option = document.createElement('option');

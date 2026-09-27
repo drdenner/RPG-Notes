@@ -95,9 +95,8 @@ const TreeView = (() => {
     }
     noResultsEl.hidden = !query || searchHits.size > 0;
 
-    // group once (O(n)) instead of the old approach of calling
-    // Store.getChildren() per node (an O(n) scan each), which made a full
-    // render O(n^2) for no reason
+    // group once (O(n)) rather than scanning the whole list for each
+    // node's children, which would make a full render O(n^2)
     const childrenByParent = new Map();
     shownNodes.forEach(n => {
       const key = n.parentId || null;

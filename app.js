@@ -100,14 +100,22 @@ document.addEventListener('DOMContentLoaded', () => {
     updateCampaignUI(); // re-enables it, and shows the right selection after a failure
   });
 
+  // two campaigns with the same name would share (and overwrite) one Drive
+  // file - so a name that's taken by a campaign on Drive is refused
+  function nameFreeOnDrive(name) {
+    if (!DriveSync.isNameOnDrive(name)) return true;
+    alert(`There's already a campaign called "${name}" on Google Drive. Pick it (☁) in the campaign list, or use another name.`);
+    return false;
+  }
+
   campaignNewBtn.addEventListener('click', () => {
-    const name = prompt('Campaign name:');
-    if (name && name.trim()) Store.createCampaign(name.trim());
+    const name = (prompt('Campaign name:') || '').trim();
+    if (name && nameFreeOnDrive(name)) Store.createCampaign(name);
   });
 
   campaignRenameBtn.addEventListener('click', () => {
-    const name = prompt('New name:', Store.getCurrentCampaignName());
-    if (name && name.trim()) Store.renameCampaign(Store.getCurrentCampaignId(), name.trim());
+    const name = (prompt('New name:', Store.getCurrentCampaignName()) || '').trim();
+    if (name && nameFreeOnDrive(name)) Store.renameCampaign(Store.getCurrentCampaignId(), name);
   });
 
   campaignDeleteBtn.addEventListener('click', () => {

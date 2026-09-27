@@ -25,8 +25,12 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   is rendered, which keeps big campaigns fast
 - New child nodes are placed on a free spot below their parent, so they
   don't pile up in the mindmap
-- Move a node to a new parent by dragging its ⠿ grip in the List view; in the
-  Mindmap, dragging a node only changes its position
+- Move a node to a new parent by dragging its ⠿ grip in the List view (it
+  gets a free spot under its new parent, and its children come along); in
+  the Mindmap, dragging a node only changes its position
+- In the Mindmap, one finger on empty space pans; two fingers zoom around
+  the point between them and pan along (the mouse wheel zooms around the
+  cursor)
 - Everything is saved locally in the browser (`localStorage`)
 - Optional sync via Google Drive, to use the same notes on several devices.
   Everything Drive-related is in the **Drive** menu at the top right
@@ -99,9 +103,14 @@ files it created itself, never the rest of your Drive.
   and reported, and old `-backup.json` / `-conflict-` files from earlier
   versions are ignored. Drive keeps older versions of every file itself
   (right-click the file, **Manage versions**).
-- Renaming a campaign renames its Drive file. Deleting a campaign (✕) moves
-  its Drive file to Drive's trash. You can delete every campaign, which leaves
-  the app empty.
+- Renaming a campaign renames its Drive file. A rename made while not
+  connected is remembered and done on the next connect. A name that's
+  already used by a campaign on Drive is refused (if that's only discovered
+  on the next connect, the campaign gets its old name back), since two
+  campaigns sharing a file would overwrite each other.
+- Deleting a campaign (✕) moves its Drive file to Drive's trash, if Drive
+  is connected at the time. You can delete every campaign, which leaves the
+  app empty.
 - Campaign names must map to different file names, so creating "A:B" when
   "A/B" exists gives "A:B (2)". Both would otherwise become `A-B.json`.
 - Nothing is created automatically: on a new device the app starts with no
@@ -169,4 +178,5 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-collapsed-<campaignId>` | Ids of the nodes collapsed in the List |
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
 | `rpg-notes-drive-unsynced` | Ids of campaigns with changes that haven't reached Drive yet |
+| `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |

@@ -46,7 +46,7 @@
 //   }
 //   - parentId === null means the node is a root node
 //   - children are NEVER stored on the node itself, they're always derived
-//     by filtering the whole list on parentId (see getChildren)
+//     by filtering the whole list on parentId
 //   - notes is plain text with a tiny markdown-like syntax: **bold** renders
 //     bold, and any http(s)/www URL is auto-linked - see notes-editor.js
 //     for the renderer. It is NEVER HTML, so it's safe to store/display as-is.
@@ -304,10 +304,6 @@ const Store = (() => {
     return n ? { ...n } : null;
   }
 
-  function getChildren(parentId) {
-    return nodes.filter(n => n.parentId === parentId).map(n => ({ ...n }));
-  }
-
   // is `maybeAncestorId` an ancestor of (or equal to) `id`?
   function isAncestor(maybeAncestorId, id) {
     let current = nodes.find(n => n.id === id);
@@ -340,24 +336,33 @@ const Store = (() => {
     return { ...node };
   }
 
+  // parentId -> [child nodes], built in one pass
+  function childrenMap() {
+    const map = new Map();
+    nodes.forEach(n => {
+      if (!map.has(n.parentId)) map.set(n.parentId, []);
+      map.get(n.parentId).push(n);
+    });
+    return map;
+  }
+
+  // `node` and everything under it
+  function subtreeOf(node, childrenOf = childrenMap()) {
+    const result = [node];
+    for (let i = 0; i < result.length; i++) result.push(...(childrenOf.get(result[i].id) || []));
+    return result;
+  }
+
   // the first free slot in the rows below `parent` (middle slot first, then
   // alternating right/left), so new children don't land on top of each
   // other. "Free" = not too close to any node of the same mindmap (the
-  // parent's main node and everything under it)
-  function freeChildSpot(parent) {
+  // parent's main node and everything under it), apart from `ignoreIds`
+  function freeChildSpot(parent, ignoreIds = new Set()) {
     const SLOT_W = 190;
     const ROW_H = 110;
     let root = parent;
-    while (root.parentId) root = nodes.find(n => n.id === root.parentId) || { parentId: null, id: root.id };
-    const mindmap = [];
-    const queue = [root.id];
-    while (queue.length) {
-      const id = queue.shift();
-      nodes.forEach(n => {
-        if (n.id === id) mindmap.push(n);
-        if (n.parentId === id) queue.push(n.id);
-      });
-    }
+    while (root.parentId) root = nodes.find(n => n.id === root.parentId) || { ...root, parentId: null };
+    const mindmap = subtreeOf(root).filter(n => !ignoreIds.has(n.id));
     const taken = (x, y) => mindmap.some(n => Math.abs(n.x - x) < SLOT_W - 30 && Math.abs(n.y - y) < ROW_H - 30);
     for (let row = 1; row <= 20; row++) {
       const y = parent.y + row * ROW_H;
@@ -399,9 +404,21 @@ const Store = (() => {
       // avoid circular references: can't move a node under itself or its
       // own child, and the new parent has to actually exist
       const valid = !newParentId || (nodes.some(n => n.id === newParentId) && !isAncestor(id, newParentId));
-      if (valid) {
+      if (valid && newParentId !== node.parentId) {
         node.parentId = newParentId;
         changed = true;
+        // moved under another node: give it a free spot there (unless the
+        // patch sets a position itself), and bring its own children along
+        if (newParentId && !('x' in patch) && !('y' in patch)) {
+          const subtree = subtreeOf(node);
+          const spot = freeChildSpot(nodes.find(n => n.id === newParentId), new Set(subtree.map(n => n.id)));
+          const dx = spot.x - node.x;
+          const dy = spot.y - node.y;
+          subtree.forEach(n => {
+            n.x = Math.max(0, n.x + dx);
+            n.y = Math.max(0, n.y + dy);
+          });
+        }
       }
     }
 
@@ -593,7 +610,7 @@ const Store = (() => {
   load();
 
   return {
-    getAll, getById, getChildren,
+    getAll, getById,
     addNode, updateNode, deleteNode, moveNode, moveNodePosition, setPositions,
     subscribe, exportJSON, getUpdatedAt, setCampaignData, addCampaignFromData,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,

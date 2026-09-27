@@ -7,7 +7,10 @@
 // Every campaign (see store.js) is one file, "<campaign name>.json", in the
 // Drive folder "RPG Notes". Files are always looked up by that name - no
 // Drive file ids are remembered between sessions. Renaming a campaign
-// renames its file; deleting a campaign moves its file to Drive's trash.
+// renames its file (a rename made while not connected is remembered and
+// done on the next connect; a name that's already taken on Drive is
+// refused, since two campaigns sharing a file would overwrite each other).
+// Deleting a campaign moves its file to Drive's trash.
 //
 // Newest wins: every campaign carries an "updatedAt" timestamp (set by
 // Store on every change, and written into the file). Syncing a campaign
@@ -49,12 +52,8 @@ const DriveSync = (() => {
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const CONNECTED_KEY = 'rpg-notes-drive-connected'; // set on connect, cleared by Disconnect
   const UNSYNCED_KEY = 'rpg-notes-drive-unsynced'; // ids of campaigns with edits not on Drive yet
+  const RENAMES_KEY = 'rpg-notes-drive-renames'; // { campaignId: name its Drive file still has } for renames not done there yet
   const UPLOAD_DEBOUNCE_MS = 10000;
-
-  // state kept by older versions of this file - no longer used
-  Object.keys(localStorage)
-    .filter(k => k.startsWith('rpg-notes-drive-') && k !== CONNECTED_KEY && k !== UNSYNCED_KEY)
-    .forEach(k => localStorage.removeItem(k));
 
   function fileNameFor(campaignName) { return `${Store.sanitizeFileName(campaignName)}.json`; }
   function campaignNameOf(fileName) { return fileName.slice(0, -'.json'.length); }
@@ -120,6 +119,65 @@ const DriveSync = (() => {
     return [...unsyncedIds].some(id => ids.has(id));
   }
 
+  // --- renames that haven't reached Drive yet ---
+
+  const pendingRenames = readPendingRenames();
+
+  function readPendingRenames() {
+    try {
+      const map = JSON.parse(localStorage.getItem(RENAMES_KEY) || '{}');
+      return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function savePendingRenames() {
+    try { localStorage.setItem(RENAMES_KEY, JSON.stringify(pendingRenames)); } catch (e) { /* ignore */ }
+  }
+
+  // remembers the (campaign) name the campaign's Drive file still has -
+  // the first one, if it's renamed several times before the next connect
+  function rememberRename(campaignId, oldName) {
+    if (!(campaignId in pendingRenames)) {
+      pendingRenames[campaignId] = oldName;
+      savePendingRenames();
+    }
+  }
+
+  // renames the campaign's Drive file from `oldName`'s file name to its
+  // current name's. If that name is already taken on Drive, the Drive file
+  // keeps its name and the campaign is renamed back to `oldName` here
+  // instead. `id` = the file's id, if already known.
+  async function renameOnDrive(campaignId, oldName, id) {
+    const campaign = Store.listCampaigns().find(c => c.id === campaignId);
+    if (!campaign) return;
+    const oldFileName = fileNameFor(oldName);
+    const newFileName = fileNameFor(campaign.name);
+    if (newFileName === oldFileName) return;
+    id = id || await findFile(oldFileName);
+    if (!id) return;
+    const clash = await findFile(newFileName);
+    if (clash && clash !== id) {
+      // (so the campaign-change handler doesn't treat the undo as a new rename)
+      if (campaignId === syncedCampaignId) syncedCampaignName = oldName;
+      Store.renameCampaign(campaignId, oldName);
+      alert(`There's already a campaign called "${campaign.name}" on Google Drive, so the campaign kept its old name "${oldName}".`);
+      return;
+    }
+    await renameFile(id, newFileName);
+    setRemoteFileNames(remoteFileNames.map(n => n === oldFileName ? newFileName : n));
+  }
+
+  // renames made while not connected
+  async function applyPendingRenames() {
+    for (const [campaignId, oldName] of Object.entries(pendingRenames)) {
+      await renameOnDrive(campaignId, oldName);
+      delete pendingRenames[campaignId];
+      savePendingRenames();
+    }
+  }
+
   // --- campaigns that are on Drive but not on this device ---
 
   function subscribeRemoteCampaigns(fn) {
@@ -136,6 +194,12 @@ const DriveSync = (() => {
   function getDriveOnlyCampaigns() {
     const localFileNames = new Set(Store.listCampaigns().map(c => fileNameFor(c.name)));
     return remoteFileNames.filter(n => !localFileNames.has(n)).map(campaignNameOf);
+  }
+
+  // is `name` taken by a campaign that's only on Drive? (as far as the last
+  // listing knows - renameOnDrive checks Drive itself before renaming)
+  function isNameOnDrive(name) {
+    return getDriveOnlyCampaigns().some(n => fileNameFor(n) === fileNameFor(name));
   }
 
   async function refreshRemoteList() {
@@ -230,6 +294,7 @@ const DriveSync = (() => {
   async function connectCurrentCampaign() {
     fileId = null;
     try {
+      await applyPendingRenames();
       if (syncedCampaignId) {
         const found = await findFile(fileNameFor(syncedCampaignName));
         fileId = await syncCampaign(syncedCampaignId, syncedCampaignName, found);
@@ -256,36 +321,39 @@ const DriveSync = (() => {
   // neither side has one, Drive wins. Creates the file if `id` is null.
   // Returns the file id. An unreadable file is never overwritten - that
   // throws an error with `unreadable` set instead.
+  // Every path ends with Drive and this device holding the same version,
+  // which markSynced records (unless it was edited again meanwhile).
   async function syncCampaign(campaignId, campaignName, id) {
-    let uploadedAt = Store.getUpdatedAt(campaignId);
     if (!id) {
+      const localAt = Store.getUpdatedAt(campaignId);
       const newId = await createFile(fileNameFor(campaignName), Store.exportJSON(campaignId));
-      markSynced(campaignId, uploadedAt);
+      markSynced(campaignId, localAt);
       return newId;
     }
     const text = await downloadFile(id);
+    const localAt = Store.getUpdatedAt(campaignId); // read after the download: the version compared (and uploaded) below
     if (!text.trim()) {
-      uploadedAt = Store.getUpdatedAt(campaignId);
       await uploadFile(id, Store.exportJSON(campaignId));
-      markSynced(campaignId, uploadedAt);
+      markSynced(campaignId, localAt);
       return id;
     }
     const data = parseOrNull(text);
     if (!data) throw unreadableError(campaignName, 'not valid JSON');
     const remoteTime = typeof data.updatedAt === 'string' ? data.updatedAt : '';
-    const localTime = Store.getUpdatedAt(campaignId) || '';
-    uploadedAt = Store.getUpdatedAt(campaignId);
+    const localTime = localAt || '';
     if (localTime > remoteTime) {
       await uploadFile(id, Store.exportJSON(campaignId));
+      markSynced(campaignId, localAt);
     } else if (remoteTime > localTime || !localTime) {
       try {
         Store.setCampaignData(campaignId, data);
       } catch (err) {
         throw unreadableError(campaignName, err.message);
       }
-      uploadedAt = Store.getUpdatedAt(campaignId); // Drive's version, now local
+      markSynced(campaignId, Store.getUpdatedAt(campaignId)); // Drive's version, now local
+    } else {
+      markSynced(campaignId, localAt); // equal timestamps: already in sync
     }
-    markSynced(campaignId, uploadedAt); // (equal timestamps: already in sync)
     return id;
   }
 
@@ -512,14 +580,14 @@ const DriveSync = (() => {
     if (newCampaignName !== syncedCampaignName) {
       const oldName = syncedCampaignName;
       syncedCampaignName = newCampaignName;
-      if (!accessToken) return;
+      if (!accessToken) {
+        rememberRename(newCampaignId, oldName); // done on the next connect
+        return;
+      }
       try {
-        const id = fileId || await findFile(fileNameFor(oldName));
-        if (id) {
-          await renameFile(id, fileNameFor(newCampaignName));
-          setRemoteFileNames(remoteFileNames.map(n => n === fileNameFor(oldName) ? fileNameFor(newCampaignName) : n));
-        }
+        await renameOnDrive(newCampaignId, oldName, fileId);
       } catch (err) {
+        rememberRename(newCampaignId, oldName);
         reportError(err);
       }
     }
@@ -528,12 +596,16 @@ const DriveSync = (() => {
   // moves a deleted campaign's file to Drive's trash (recoverable there)
   Store.subscribeCampaignDeleted((campaignId, campaignName) => {
     if (unsyncedIds.has(campaignId)) updateUnsynced(() => unsyncedIds.delete(campaignId));
+    // a rename that never reached Drive: the file still has the old name
+    const fileName = fileNameFor(pendingRenames[campaignId] || campaignName);
+    delete pendingRenames[campaignId];
+    savePendingRenames();
     queueSync(async () => {
       if (!accessToken) return;
       try {
-        const id = await findFile(fileNameFor(campaignName));
+        const id = await findFile(fileName);
         if (id) await patchFile(id, { trashed: true });
-        setRemoteFileNames(remoteFileNames.filter(n => n !== fileNameFor(campaignName)));
+        setRemoteFileNames(remoteFileNames.filter(n => n !== fileName));
       } catch (err) {
         console.error('Could not move the campaign\'s Drive file to the trash', err);
       }
@@ -661,7 +733,7 @@ const DriveSync = (() => {
   }
 
   return {
-    init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured, hasUnsyncedChanges,
+    init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured, hasUnsyncedChanges, isNameOnDrive,
     subscribeRemoteCampaigns, getDriveOnlyCampaigns, downloadCampaign, removeFromDevice
   };
 })();
