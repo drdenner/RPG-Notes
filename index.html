@@ -25,11 +25,16 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
   <header class="topbar">
-    <h1 class="app-title">⚔ RPG Notes</h1>
+    <!-- the two tabs: the campaign's notes, and the item tables; the
+         highlighted one is open -->
+    <div class="mode-switch app-tabs" role="group" aria-label="Show">
+      <button id="tab-notes-btn" class="mode-btn" title="The campaign's notes: the list and the mindmaps">📜 Notes</button>
+      <button id="tab-tables-btn" class="mode-btn" title="Roll random magic items, and look up the tables">🎲 Tables</button>
+    </div>
     <div class="campaign-switcher">
       <select id="campaign-select" class="campaign-select" title="Switch campaign"></select>
       <button id="campaign-new-btn" class="btn-icon" title="New campaign">+</button>
@@ -108,6 +113,42 @@
         </div>
       </div>
     </section>
+    <section id="loot-view" class="view">
+      <div class="loot-wrap">
+        <div class="loot-controls">
+          <div class="mode-switch" role="group" aria-label="Item strength">
+            <button class="mode-btn" data-tier="minor">Minor</button>
+            <button class="mode-btn" data-tier="medium">Medium</button>
+            <button class="mode-btn" data-tier="major">Major</button>
+          </div>
+          <label class="loot-count">Roll
+            <select id="loot-count" class="campaign-select">
+              <option value="1">1 item</option>
+              <option value="2">2 items</option>
+              <option value="3">3 items</option>
+              <option value="4">4 items</option>
+              <option value="5">5 items</option>
+              <option value="10">10 items</option>
+            </select>
+          </label>
+        </div>
+        <div id="loot-roll-btns" class="loot-roll-btns"></div>
+        <div class="loot-results-bar">
+          <h2 class="loot-heading">Results</h2>
+          <button id="loot-select-all-btn" class="btn">Select all</button>
+          <button id="loot-add-btn" class="btn btn-primary">Add to a node…</button>
+          <button id="loot-clear-btn" class="btn">Clear</button>
+        </div>
+        <div id="loot-message" class="loot-message" hidden role="status"></div>
+        <p id="loot-empty" class="loot-empty">Nothing rolled yet. Pick Minor, Medium or Major, and tap what to roll.</p>
+        <ul id="loot-results" class="loot-results"></ul>
+        <details class="loot-browse-wrap">
+          <summary>Browse the tables</summary>
+          <div id="loot-browse" class="loot-browse"></div>
+        </details>
+        <p class="loot-source">Tables from the System Reference Document 3.5, Open Game Content under the <a href="data/OGL.txt" target="_blank" rel="noopener">Open Game License</a>.</p>
+      </div>
+    </section>
   </main>
 
   <script src="store.js?v=18"></script>
@@ -116,6 +157,9 @@
   <script src="drive-sync.js?v=27"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
-  <script src="app.js?v=22"></script>
+  <script src="data/srd35-magic-items.js?v=1"></script>
+  <script src="loot.js?v=1"></script>
+  <script src="loot-view.js?v=1"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>

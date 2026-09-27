@@ -2,8 +2,8 @@
 // Glues the views together with the Store: initializes both views, keeps
 // whichever one is currently visible in sync with data changes (the other
 // just gets caught up when you switch to it, see renderAll/showView),
-// drives navigation between the list and a main node's mindmap, edit/view
-// mode, the Google Drive buttons, backup/import, Undo after deleting
+// drives navigation between the list, a main node's mindmap and the
+// 🎲 Tables tab (loot-view.js), edit/view mode, the Google Drive buttons, backup/import, Undo after deleting
 // nodes, and offline support (sw.js).
 
 // --- offline support (sw.js keeps the app's files so it starts without
@@ -35,9 +35,12 @@ async function offlineReadiness() {
 document.addEventListener('DOMContentLoaded', () => {
   const treeContainer = document.getElementById('tree-view');
   const mindmapContainer = document.getElementById('mindmap-view');
+  const lootContainer = document.getElementById('loot-view');
 
   TreeView.init(treeContainer, { onOpenMindmap: openMindmap });
   MindmapView.init(mindmapContainer, { onBack: closeMindmap, onSwitch: switchMindmap });
+  // "Open" after adding items to a node: back to the notes, with it open
+  LootView.init(lootContainer, { onOpenNode: id => { closeTables(); NotesEditor.open(id); } });
 
   // only the visible view is actually re-rendered when data changes; the
   // other one is marked dirty and catches up the moment you switch to it
@@ -54,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     treeDirty = true;
+    if (activeView === 'tables') return; // the notes catch up when you go back to them
     if (!Store.getById(MindmapView.getMainNodeId())) {
       route(); // its main node was deleted, or the campaign switched: back to the list
     } else {
@@ -285,8 +289,43 @@ document.addEventListener('DOMContentLoaded', () => {
     else { history.replaceState(null, '', listUrl()); route(); }
   }
 
+  // --- the 📜 Notes / 🎲 Tables tabs: the tables live in the URL too
+  // (#tables), so the back button returns from them to the notes - to the
+  // list or the mindmap, whichever was open - and a reload stays on them.
+  // Being on the tables is also remembered, like an open mindmap.
+  const TABLES_HASH = '#tables';
+  const OPEN_TABLES_KEY = 'rpg-notes-open-tables';
+
+  function isTablesHash() { return location.hash === TABLES_HASH; }
+
+  function openTables() {
+    if (isTablesHash()) return;
+    // fromNotes: the notes are right behind this entry in the history
+    history.pushState({ fromNotes: true }, '', TABLES_HASH);
+    route();
+  }
+  function closeTables() {
+    if (!isTablesHash()) return;
+    if (history.state && history.state.fromNotes) {
+      history.back();
+      return;
+    }
+    // nothing behind us (e.g. the app was opened on #tables): go to the
+    // mindmap that was open last, or the list
+    let lastId = null;
+    try { lastId = localStorage.getItem(OPEN_MINDMAP_KEY); } catch (e) { /* ignore */ }
+    history.replaceState(null, '', lastId && Store.getById(lastId) ? mapUrl(lastId) : listUrl());
+    route();
+  }
+  document.getElementById('tab-notes-btn').addEventListener('click', closeTables);
+  document.getElementById('tab-tables-btn').addEventListener('click', openTables);
+
   // shows whatever the URL says
   function route() {
+    if (isTablesHash()) {
+      showView('tables');
+      return;
+    }
     const id = mapIdFromHash();
     if (id && Store.getById(id)) {
       showView('mindmap', id);
@@ -297,32 +336,51 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   window.addEventListener('popstate', route);
 
+  const tabNotesBtn = document.getElementById('tab-notes-btn');
+  const tabTablesBtn = document.getElementById('tab-tables-btn');
+
   function showView(name, mapId) {
     const isList = name === 'list';
+    const isTables = name === 'tables';
     activeView = name;
     treeContainer.classList.toggle('active', isList);
-    mindmapContainer.classList.toggle('active', !isList);
+    mindmapContainer.classList.toggle('active', name === 'mindmap');
+    lootContainer.classList.toggle('active', isTables);
+    document.body.classList.toggle('tables-open', isTables);
+    tabNotesBtn.classList.toggle('active', !isTables);
+    tabTablesBtn.classList.toggle('active', isTables);
+    tabNotesBtn.setAttribute('aria-pressed', String(!isTables));
+    tabTablesBtn.setAttribute('aria-pressed', String(isTables));
     try {
+      // (on the tables, the open mindmap stays remembered for going back)
+      if (isTables) localStorage.setItem(OPEN_TABLES_KEY, 'true');
+      else localStorage.removeItem(OPEN_TABLES_KEY);
       if (isList) localStorage.removeItem(OPEN_MINDMAP_KEY);
-      else localStorage.setItem(OPEN_MINDMAP_KEY, mapId);
+      else if (!isTables) localStorage.setItem(OPEN_MINDMAP_KEY, mapId);
     } catch (e) { /* storage unavailable - just not remembered */ }
 
-    // catch up the list if it missed any updates while the mindmap was
+    // catch up the list if it missed any updates while another view was
     // shown; the mindmap is rendered fresh (after being made visible, so it
     // can measure itself and center its nodes)
     if (isList && treeDirty) { TreeView.render(); treeDirty = false; }
-    if (!isList) MindmapView.open(mapId);
+    if (name === 'mindmap') MindmapView.open(mapId);
   }
 
-  // reopened without #map in the URL: go back to the mindmap that was open
-  // last time, with the list behind it in the history
-  if (!mapIdFromHash()) {
+  // reopened without #map or #tables in the URL: go back to the mindmap
+  // and/or the tables that were open last time, with the list (and the
+  // mindmap) behind them in the history
+  if (!location.hash) {
     let lastId = null;
-    try { lastId = localStorage.getItem(OPEN_MINDMAP_KEY); } catch (e) { /* ignore */ }
+    let tablesOpen = false;
+    try {
+      lastId = localStorage.getItem(OPEN_MINDMAP_KEY);
+      tablesOpen = localStorage.getItem(OPEN_TABLES_KEY) === 'true';
+    } catch (e) { /* ignore */ }
     if (lastId && Store.getById(lastId)) {
       history.replaceState(null, '', listUrl());
       history.pushState({ fromList: true }, '', mapUrl(lastId));
     }
+    if (tablesOpen) history.pushState({ fromNotes: true }, '', TABLES_HASH);
   }
   route();
 
