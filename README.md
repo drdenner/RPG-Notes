@@ -6,9 +6,6 @@ each **main node** (a top-level node, e.g. a chapter) can be opened as a
 freely arranged **Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
-- Two tabs at the left of the top bar: **📜 Notes** (the list and the
-  mindmaps) and **🎲 Tables**, for rolling random magic items from the SRD
-  3.5 tables and putting them into a node's notes (see "Item tables" below)
 - Multiple independent campaigns, one active at a time
 - **Edit / View** switch in the top bar (the highlighted half is the current
   mode). View mode locks everything, for use during a session
@@ -54,50 +51,6 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
 
 It's plain HTML, CSS and vanilla JavaScript: no build step, no dependencies
 (apart from Google's sign-in library, loaded only for Drive sync).
-
-## Item tables (🎲 Tables)
-
-The **🎲 Tables** tab rolls random magic items on the random item tables
-of the System Reference Document 3.5 (the SRD version of the DMG's magic
-item tables), for preparing treasure.
-
-- Pick **Minor / Medium / Major** and how many items (1-10), then tap
-  **🎲 Random item** (the tables decide what kind) or a kind: armor &
-  shields, weapons, potions, rings, rods, scrolls, staffs, wands, wondrous
-  items. Rods and staffs don't exist as minor items, so those buttons are
-  greyed out for Minor.
-- Each item is rolled all the way through, as the rules describe: e.g. a
-  weapon gets its bonus, weapon type and special abilities (with "roll
-  again" and "roll twice again", the +10 limit, duplicates and
-  incompatible abilities rerolled, keen/disruption/vorpal/returning only on
-  weapons that can have them, a bane weapon's foe, a double weapon's other
-  end), a scroll gets arcane/divine, its number of spells and each spell.
-  Energy types and alignments in potion names are rolled too. The price is
-  the market price from the tables (for armor and weapons: the bonus
-  squared × 1,000 / 2,000 gp, plus the gp abilities and the masterwork item).
-- **Rolls** under an item shows every die rolled for it.
-- New results go on top. Tap results to select them, then **Add N to a
-  node…** and pick a node (search, or scroll the list, which shows the
-  path to each node). One line per item is appended to its notes, like
-  `**+1 flaming longsword** (8,315 gp)`, and **Open** jumps to the node.
-  The results remember which node they went to. Adding is hidden in View
-  mode, since it changes the notes.
-- The results list is kept on this device only (`localStorage`), not in
-  a campaign and not on Drive. **Clear** / **Remove selected** empties it.
-- **Browse the tables** shows every table as it is in the SRD.
-- Like the notes, it works offline, and the back button goes from the
-  tables back to the notes (to the list or the mindmap that was open).
-
-The tables are in `data/srd35-magic-items.js`, generated from the SRD pages
-at d20srd.org rather than typed in, and checked so that every d% column
-covers 01-100 exactly once. One correction: the SRD page gives the major
-9th-level scroll as 95-100, overlapping 8th level (86-95), so it's 96-100
-here. The rolling itself is in `loot.js`, the tab in `loot-view.js`.
-
-The SRD is Open Game Content under the Open Game License, which is in
-`data/OGL.txt` and linked at the bottom of the tab. It has to stay with the
-data file if the app is shared. (The tables are the SRD's, so the app says
-"SRD 3.5" rather than using the D&D trademarks.)
 
 ## Running it
 
@@ -286,6 +239,4 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
 | `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version. A campaign whose current `updatedAt` differs has changes Drive doesn't have |
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
-| `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list; kept while on 🎲 Tables) |
-| `rpg-notes-open-tables` | `"true"` while the 🎲 Tables tab is open |
-| `rpg-notes-loot` | 🎲 Tables: `{ tier, count, results }`, the rolled items (newest first, at most 200) |
+| `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |
