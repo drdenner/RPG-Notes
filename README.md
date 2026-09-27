@@ -78,7 +78,11 @@ the saved copy), so updates arrive as usual.
 - Your notes are in `localStorage` either way; the service worker only
   keeps the app itself available.
 - Without internet, Drive shows **Drive: offline**. Changes are saved on the
-  device and synced automatically when the connection is back.
+  device and synced automatically when the connection is back. The app
+  never opens Google's sign-in window without a connection (it checks that
+  Google can be reached first): it can't load then, and on a tablet it
+  would cover the app with an error page. It signs in again by itself once
+  the connection is back.
 - **Install it (Android, Chrome):** open the app's address, then the **⋮**
   menu → **Install app** (or **Add to Home screen**). It then opens from its
   own icon, full screen without the address bar (icons are in `icons/`,

@@ -43,7 +43,9 @@
 // saved on the device and marked unsynced as usual, and when the browser
 // reports it's back online, everything unsynced is synced automatically.
 // If the app was started offline, Google's sign-in library couldn't load -
-// it's loaded then instead.
+// it's loaded then instead. Google's sign-in window is never opened without
+// a connection: it can't load then, and on a tablet it would cover the app
+// with an error page.
 //
 // ONE-TIME SETUP: see "Google Drive sync" in README.md for how to get a
 // Google OAuth Client ID - it goes into CLIENT_ID below.
@@ -250,10 +252,32 @@ const DriveSync = (() => {
       error_callback: onTokenError // popup blocked/closed - GIS only reports these here
     });
     setStatus('disconnected');
-    // connected last time? try to reconnect without asking
-    if (localStorage.getItem(CONNECTED_KEY)) {
-      setStatus('connecting');
-      tokenClient.requestAccessToken({ prompt: '' });
+    reconnectIfWanted();
+  }
+
+  // connected last time (and not disconnected since)? sign in again without
+  // asking - but only if Google can actually be reached (the library itself
+  // may well have come from the browser's cache while offline)
+  async function reconnectIfWanted() {
+    if (!tokenClient || accessToken || !localStorage.getItem(CONNECTED_KEY)) return;
+    setStatus('connecting');
+    if (!(await googleReachable())) {
+      setStatus('offline');
+      return;
+    }
+    tokenClient.requestAccessToken({ prompt: '' });
+  }
+
+  // a quick "is there internet?" check against Google itself (navigator.onLine
+  // alone says yes on a wifi without internet, too)
+  async function googleReachable() {
+    if (!navigator.onLine) return false;
+    const timeout = new Promise((resolve, reject) => setTimeout(() => reject(new Error('timeout')), 4000));
+    try {
+      await Promise.race([fetch(GIS_URL, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' }), timeout]);
+      return true;
+    } catch (err) {
+      return false;
     }
   }
 
@@ -288,14 +312,20 @@ const DriveSync = (() => {
       setStatus('connecting');
       queueSync(() => connectCurrentCampaign());
     } else if (!tokenClient) {
-      loadGis();
-    } else if (localStorage.getItem(CONNECTED_KEY)) {
-      setStatus('reauth'); // needs a tap (Reconnect) - browsers block the popup otherwise
+      loadGis(); // signs in again once loaded (setUpTokenClient)
+    } else {
+      reconnectIfWanted(); // e.g. started offline
     }
   });
 
+  // (no reachability check here: it would have to wait, and a sign-in
+  // popup opened after waiting is blocked - it must come straight from the tap)
   function connect() {
     if (!tokenClient) return;
+    if (!navigator.onLine) {
+      setStatus('offline');
+      return;
+    }
     setStatus('connecting');
     tokenClient.requestAccessToken({ prompt: '' });
   }
