@@ -42,7 +42,12 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   `.json` file, or imports one as a new campaign (same format as the Drive
   files, see "Data format")
 - Optional sync via Google Drive, to use the same notes on several devices.
-  Everything Drive-related is in the **Drive** menu at the top right
+  Everything Drive-related is in the **Drive** menu at the top right. Next
+  to it, **Saved to Drive 14:32** says when the current campaign last
+  reached Drive; it turns **red** ("Not saved to Drive · last 14:32") when
+  there are changes Drive doesn't have and can't get right now (offline,
+  sign-in expired, disconnected). Right after an edit it says **Saving to
+  Drive…**, since edits are uploaded about 10 seconds later
 
 It's plain HTML, CSS and vanilla JavaScript: no build step, no dependencies
 (apart from Google's sign-in library, loaded only for Drive sync).
@@ -227,5 +232,6 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-collapsed-<campaignId>` | Ids of the nodes collapsed in the List |
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
 | `rpg-notes-drive-unsynced` | Ids of campaigns with changes that haven't reached Drive yet |
+| `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version |
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |

@@ -60,6 +60,7 @@ const DriveSync = (() => {
   const FOLDER_MIME = 'application/vnd.google-apps.folder';
   const CONNECTED_KEY = 'rpg-notes-drive-connected'; // set on connect, cleared by Disconnect
   const UNSYNCED_KEY = 'rpg-notes-drive-unsynced'; // ids of campaigns with edits not on Drive yet
+  const SAVED_KEY = 'rpg-notes-drive-saved'; // { campaignId: { at, version } } - when each campaign last reached Drive
   const RENAMES_KEY = 'rpg-notes-drive-renames'; // { campaignId: name its Drive file still has } for renames not done there yet
   const UPLOAD_DEBOUNCE_MS = 10000;
   const GIS_URL = 'https://accounts.google.com/gsi/client'; // Google's sign-in library (also in index.html)
@@ -116,11 +117,44 @@ const DriveSync = (() => {
   }
 
   // `updatedAt` is the campaign's version that just reached Drive (or came
-  // from it) - if it has been edited again since, it stays unsynced
+  // from it) - if it has been edited again since, it stays unsynced. Also
+  // records when that happened, for getSaveState.
   function markSynced(campaignId, updatedAt) {
+    savedVersions[campaignId] = { at: new Date().toISOString(), version: updatedAt };
+    try { localStorage.setItem(SAVED_KEY, JSON.stringify(savedVersions)); } catch (e) { /* ignore */ }
     if (unsyncedIds.has(campaignId) && Store.getUpdatedAt(campaignId) === updatedAt) {
       updateUnsynced(() => unsyncedIds.delete(campaignId));
     }
+  }
+
+  // --- "Saved to Drive 14:32" next to the Drive button ---
+
+  const savedVersions = readSavedVersions();
+
+  // (entries of campaigns that are no longer on this device are dropped)
+  function readSavedVersions() {
+    try {
+      const map = JSON.parse(localStorage.getItem(SAVED_KEY) || '{}');
+      if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
+      const ids = new Set(Store.listCampaigns().map(c => c.id));
+      Object.keys(map).forEach(id => { if (!ids.has(id)) delete map[id]; });
+      return map;
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // for the campaign: { savedAt (ISO or null), inSync, saving }, or null
+  // when Drive isn't used for it on this device. inSync = the version on
+  // this device is the one that last reached Drive; saving = it isn't, but
+  // an upload is on its way (edits go up ~10 seconds after the last one)
+  function getSaveState(campaignId) {
+    if (!campaignId) return null;
+    const saved = savedVersions[campaignId];
+    if (!saved && !localStorage.getItem(CONNECTED_KEY)) return null;
+    const inSync = !!saved && saved.version === Store.getUpdatedAt(campaignId);
+    const saving = !inSync && !!accessToken && (!!uploadTimer || lastStatus === 'syncing' || lastStatus === 'connecting');
+    return { savedAt: saved ? saved.at : null, inSync, saving };
   }
 
   function hasUnsyncedChanges() {
@@ -272,7 +306,7 @@ const DriveSync = (() => {
   // alone says yes on a wifi without internet, too)
   async function googleReachable() {
     if (!navigator.onLine) return false;
-    const timeout = new Promise((resolve, reject) => setTimeout(() => reject(new Error('timeout')), 4000));
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000));
     try {
       await Promise.race([fetch(GIS_URL, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' }), timeout]);
       return true;
@@ -819,7 +853,7 @@ const DriveSync = (() => {
   }
 
   return {
-    init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured, hasUnsyncedChanges, isNameOnDrive,
+    init, connect, disconnect, syncNow, pullAllFromDrive, isConfigured, hasUnsyncedChanges, isNameOnDrive, getSaveState,
     subscribeRemoteCampaigns, getDriveOnlyCampaigns, downloadCampaign, removeFromDevice
   };
 })();

@@ -23,7 +23,7 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -51,6 +51,7 @@
       <button id="mode-view-btn" class="mode-btn" title="View mode: read only, nothing can be changed by accident">👁 View</button>
     </div>
     <div class="io-actions">
+      <span id="drive-saved" class="drive-saved" hidden></span>
       <button id="drive-menu-btn" class="btn drive-menu-btn" aria-haspopup="true" aria-expanded="false">
         <span id="drive-dot" class="drive-dot"></span>
         <span id="drive-status-text">Drive: not connected</span>
@@ -111,9 +112,9 @@
   <script src="store.js?v=18"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=6"></script>
-  <script src="drive-sync.js?v=25"></script>
+  <script src="drive-sync.js?v=26"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

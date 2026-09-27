@@ -141,6 +141,22 @@ body {
   position: relative;
 }
 
+/* "Saved to Drive 14:32" - red when there are changes Drive doesn't have */
+.drive-saved {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.drive-saved[hidden] {
+  display: none;
+}
+
+.drive-saved.unsaved {
+  color: var(--accent-red-bright);
+  font-weight: 600;
+}
+
 .drive-menu-btn {
   display: flex;
   align-items: center;

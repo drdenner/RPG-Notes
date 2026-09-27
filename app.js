@@ -371,7 +371,33 @@ document.addEventListener('DOMContentLoaded', () => {
     offline: 'Drive: offline'
   };
 
+  // "Saved to Drive 14:32" / "Saving to Drive…" / red "Not saved to Drive",
+  // for the current campaign (see DriveSync.getSaveState)
+  const driveSavedEl = document.getElementById('drive-saved');
+  function updateSavedLabel() {
+    const state = DriveSync.getSaveState(Store.getCurrentCampaignId());
+    driveSavedEl.hidden = !state;
+    if (!state) return;
+    const when = state.savedAt ? formatSavedAt(state.savedAt) : '';
+    driveSavedEl.classList.toggle('unsaved', !state.inSync && !state.saving);
+    if (state.inSync) driveSavedEl.textContent = 'Saved to Drive ' + when;
+    else if (state.saving) driveSavedEl.textContent = 'Saving to Drive…';
+    else driveSavedEl.textContent = 'Not saved to Drive' + (when ? ' · last ' + when : '');
+    driveSavedEl.title = state.savedAt ? 'Last saved to Google Drive: ' + new Date(state.savedAt).toLocaleString() : '';
+  }
+  // today: "14:32"; earlier: "27 Sep 14:32" (in the device's language)
+  function formatSavedAt(iso) {
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === new Date().toDateString()) return time;
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time;
+  }
+  Store.subscribe(updateSavedLabel);
+  Store.subscribeCampaignChange(updateSavedLabel);
+  setInterval(updateSavedLabel, 60000); // so "14:32" gets its date after midnight
+
   function updateDriveUI(status, detail) {
+    updateSavedLabel();
     driveDot.className = 'drive-dot drive-dot-' + status;
     driveStatusText.textContent = DRIVE_LABELS[status] || status;
     driveMenuBtn.title = detail || '';
