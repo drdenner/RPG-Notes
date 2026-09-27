@@ -25,11 +25,18 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
   <header class="topbar">
-    <h1 class="app-title">⚔ RPG Notes</h1>
+    <!-- the tabs: Campaign is the list and the mindmaps; the highlighted
+         one is open -->
+    <div class="mode-switch app-tabs" role="group" aria-label="Tabs">
+      <button class="mode-btn" data-tab="campaign" title="The campaign: the list and the mindmaps">Campaign</button>
+      <button class="mode-btn" data-tab="players">Players</button>
+      <button class="mode-btn" data-tab="notes">Notes</button>
+      <button class="mode-btn" data-tab="npcs">NPCs</button>
+    </div>
     <div class="campaign-switcher">
       <select id="campaign-select" class="campaign-select" title="Switch campaign"></select>
       <button id="campaign-new-btn" class="btn-icon" title="New campaign">+</button>
@@ -108,6 +115,16 @@
         </div>
       </div>
     </section>
+    <!-- the other tabs - empty for now -->
+    <section id="players-tab-view" class="view tab-view">
+      <p class="tab-empty">Nothing here yet.</p>
+    </section>
+    <section id="notes-tab-view" class="view tab-view">
+      <p class="tab-empty">Nothing here yet.</p>
+    </section>
+    <section id="npcs-tab-view" class="view tab-view">
+      <p class="tab-empty">Nothing here yet.</p>
+    </section>
   </main>
 
   <script src="store.js?v=18"></script>
@@ -116,6 +133,6 @@
   <script src="drive-sync.js?v=27"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=24"></script>
 </body>
 </html>

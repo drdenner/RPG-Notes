@@ -2,7 +2,8 @@
 // Glues the views together with the Store: initializes both views, keeps
 // whichever one is currently visible in sync with data changes (the other
 // just gets caught up when you switch to it, see renderAll/showView),
-// drives navigation between the list and a main node's mindmap, edit/view
+// drives the tabs (Campaign, Players, Notes, NPCs) and, on the Campaign
+// tab, navigation between the list and a main node's mindmap, edit/view
 // mode, the Google Drive buttons, backup/import, Undo after deleting
 // nodes, and offline support (sw.js).
 
@@ -54,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     treeDirty = true;
+    if (activeView !== 'mindmap') return; // another tab: the Campaign tab catches up when you go back
     if (!Store.getById(MindmapView.getMainNodeId())) {
       route(); // its main node was deleted, or the campaign switched: back to the list
     } else {
@@ -285,8 +287,54 @@ document.addEventListener('DOMContentLoaded', () => {
     else { history.replaceState(null, '', listUrl()); route(); }
   }
 
+  // --- the tabs: Campaign is the list and the mindmaps; Players, Notes
+  // and NPCs are empty for now. Another tab lives in the URL too (#players,
+  // #notes, #npcs), so the back button returns from it to the campaign -
+  // to the list or the mindmap, whichever was open - and a reload stays on
+  // it. The open tab is also remembered, like an open mindmap.
+  const TABS = ['players', 'notes', 'npcs'];
+  const OPEN_TAB_KEY = 'rpg-notes-open-tab';
+  const tabViews = {};
+  TABS.forEach(tab => { tabViews[tab] = document.getElementById(tab + '-tab-view'); });
+  const tabButtons = [...document.querySelectorAll('[data-tab]')];
+
+  function tabFromHash() {
+    const tab = location.hash.slice(1);
+    return TABS.includes(tab) ? tab : null;
+  }
+
+  function openTab(tab) {
+    if (tab === 'campaign') { closeTab(); return; }
+    if (tabFromHash() === tab) return;
+    // fromCampaign: the campaign is right behind this entry in the history.
+    // Going from one of these tabs to another replaces the entry, so back
+    // still leads straight to the campaign.
+    if (tabFromHash()) history.replaceState(history.state, '', '#' + tab);
+    else history.pushState({ fromCampaign: true }, '', '#' + tab);
+    route();
+  }
+  function closeTab() {
+    if (!tabFromHash()) return;
+    if (history.state && history.state.fromCampaign) {
+      history.back();
+      return;
+    }
+    // nothing behind us (e.g. the app was opened on #players): go to the
+    // mindmap that was open last, or the list
+    let lastId = null;
+    try { lastId = localStorage.getItem(OPEN_MINDMAP_KEY); } catch (e) { /* ignore */ }
+    history.replaceState(null, '', lastId && Store.getById(lastId) ? mapUrl(lastId) : listUrl());
+    route();
+  }
+  tabButtons.forEach(btn => btn.addEventListener('click', () => openTab(btn.dataset.tab)));
+
   // shows whatever the URL says
   function route() {
+    const tab = tabFromHash();
+    if (tab) {
+      showView(tab);
+      return;
+    }
     const id = mapIdFromHash();
     if (id && Store.getById(id)) {
       showView('mindmap', id);
@@ -297,32 +345,50 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   window.addEventListener('popstate', route);
 
+  // name: 'list', 'mindmap' (both on the Campaign tab) or one of TABS
   function showView(name, mapId) {
     const isList = name === 'list';
+    const tab = TABS.includes(name) ? name : 'campaign';
     activeView = name;
     treeContainer.classList.toggle('active', isList);
-    mindmapContainer.classList.toggle('active', !isList);
+    mindmapContainer.classList.toggle('active', name === 'mindmap');
+    TABS.forEach(t => tabViews[t].classList.toggle('active', t === name));
+    document.body.classList.toggle('other-tab', tab !== 'campaign');
+    tabButtons.forEach(btn => {
+      const active = btn.dataset.tab === tab;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
     try {
+      if (tab !== 'campaign') localStorage.setItem(OPEN_TAB_KEY, tab);
+      else localStorage.removeItem(OPEN_TAB_KEY);
+      // (on another tab, the open mindmap stays remembered for going back)
       if (isList) localStorage.removeItem(OPEN_MINDMAP_KEY);
-      else localStorage.setItem(OPEN_MINDMAP_KEY, mapId);
+      else if (name === 'mindmap') localStorage.setItem(OPEN_MINDMAP_KEY, mapId);
     } catch (e) { /* storage unavailable - just not remembered */ }
 
-    // catch up the list if it missed any updates while the mindmap was
+    // catch up the list if it missed any updates while another view was
     // shown; the mindmap is rendered fresh (after being made visible, so it
     // can measure itself and center its nodes)
     if (isList && treeDirty) { TreeView.render(); treeDirty = false; }
-    if (!isList) MindmapView.open(mapId);
+    if (name === 'mindmap') MindmapView.open(mapId);
   }
 
-  // reopened without #map in the URL: go back to the mindmap that was open
-  // last time, with the list behind it in the history
-  if (!mapIdFromHash()) {
+  // reopened without anything in the URL: go back to the mindmap and/or
+  // the tab that were open last time, with the list (and the mindmap)
+  // behind them in the history
+  if (!location.hash) {
     let lastId = null;
-    try { lastId = localStorage.getItem(OPEN_MINDMAP_KEY); } catch (e) { /* ignore */ }
+    let lastTab = null;
+    try {
+      lastId = localStorage.getItem(OPEN_MINDMAP_KEY);
+      lastTab = localStorage.getItem(OPEN_TAB_KEY);
+    } catch (e) { /* ignore */ }
     if (lastId && Store.getById(lastId)) {
       history.replaceState(null, '', listUrl());
       history.pushState({ fromList: true }, '', mapUrl(lastId));
     }
+    if (TABS.includes(lastTab)) history.pushState({ fromCampaign: true }, '', '#' + lastTab);
   }
   route();
 

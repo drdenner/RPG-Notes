@@ -53,12 +53,11 @@ body {
   flex-wrap: wrap;
 }
 
-.app-title {
+/* the tabs (Campaign, Players, Notes, NPCs) - look like the edit/view
+   switch below, in the title font */
+.app-tabs .mode-btn {
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: 1.4rem;
-  color: var(--accent-gold-bright);
-  margin: 0;
-  letter-spacing: 0.5px;
+  font-size: 0.95rem;
 }
 
 .campaign-switcher {
@@ -974,4 +973,30 @@ body.no-campaign #tree-new-root-btn {
   content: 'No notes yet.';
   color: var(--text-dim);
   font-style: italic;
+}
+
+/* --- the Players, Notes and NPCs tabs (empty for now) --- */
+
+.tab-empty {
+  margin: auto;
+  padding: 20px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* "No campaigns on this device" belongs to the Campaign tab */
+body.other-tab .no-campaign-msg {
+  display: none;
+}
+
+/* tablet in portrait: a tighter top bar, so more of it fits on one line */
+@media (max-width: 900px) {
+  .topbar {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .mode-btn {
+    padding: 9px 10px;
+  }
 }

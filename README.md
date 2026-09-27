@@ -6,6 +6,11 @@ each **main node** (a top-level node, e.g. a chapter) can be opened as a
 freely arranged **Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
+- Tabs at the left of the top bar: **Campaign** (the list and the
+  mindmaps described below), **Players**, **Notes** and **NPCs**. The last
+  three are empty for now. The back button returns from them to the
+  campaign (to the list or the mindmap that was open), and the app
+  remembers which tab was open
 - Multiple independent campaigns, one active at a time
 - **Edit / View** switch in the top bar (the highlighted half is the current
   mode). View mode locks everything, for use during a session
@@ -239,4 +244,5 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
 | `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version. A campaign whose current `updatedAt` differs has changes Drive doesn't have |
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
-| `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list) |
+| `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list; kept while another tab is open) |
+| `rpg-notes-open-tab` | `players`, `notes` or `npcs` while that tab is open (removed on the Campaign tab) |
