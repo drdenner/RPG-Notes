@@ -59,6 +59,10 @@
 //     older version of the app keeps them (it just shows them as main
 //     nodes). getAll()/getById() leave board nodes out, so the list and
 //     the mindmaps never see them; getBoardNodes() returns them.
+//   - "board": "npcs" is an NPC on the NPCs tab (see npc-list.js): name is
+//     the NPC's name, notes the description, and two more string fields,
+//     "location" (the list is grouped by it; "" = no location) and "note".
+//     x/y aren't used there.
 //
 // normalizeNodes() repairs incoming nodes defensively (missing
 // fields get sane defaults, a parentId pointing at a non-existent node
@@ -383,9 +387,14 @@ const Store = (() => {
     return { ...node };
   }
 
-  // a new node on a board (e.g. 'notes'), at x/y; returns null (and does
-  // nothing) if there is no campaign to add it to
-  function addBoardNode(board, name, x, y) {
+  // the extra text fields a board node can have (NPCs: location, note),
+  // set through addBoardNode/updateNode
+  const BOARD_TEXT_FIELDS = ['location', 'note'];
+
+  // a new node on a board (e.g. 'notes'), at x/y, with any of
+  // BOARD_TEXT_FIELDS from `fields`; returns null (and does nothing) if
+  // there is no campaign to add it to
+  function addBoardNode(board, name, x, y, fields = {}) {
     if (!currentCampaignId) return null;
     const node = {
       id: generateId(),
@@ -396,6 +405,9 @@ const Store = (() => {
       y: Math.max(0, Math.round(y)),
       board
     };
+    BOARD_TEXT_FIELDS.forEach(key => {
+      if (typeof fields[key] === 'string') node[key] = key === 'location' ? fields[key].trim() : fields[key];
+    });
     nodes.push(node);
     notify();
     return { ...node };
@@ -442,7 +454,8 @@ const Store = (() => {
   // applies several changes to one node as ONE mutation (one save, one
   // render, one Drive sync scheduled) - e.g. name + notes from the editor,
   // or position + new parent from a mindmap drag. `patch` may contain any
-  // of name, notes, x, y, parentId; each is validated on its own, and an
+  // of name, notes, x, y, parentId (and, on a board node, location and
+  // note); each is validated on its own, and an
   // invalid one (e.g. a parentId that would create a cycle) is skipped
   // while the rest of the patch still applies
   function updateNode(id, patch) {
@@ -459,6 +472,15 @@ const Store = (() => {
     if ('notes' in patch) {
       const notes = typeof patch.notes === 'string' ? patch.notes : '';
       if (notes !== node.notes) { node.notes = notes; changed = true; }
+    }
+    // board nodes only (e.g. an NPC's location and note)
+    if (node.board) {
+      BOARD_TEXT_FIELDS.forEach(key => {
+        if (!(key in patch)) return;
+        let value = typeof patch[key] === 'string' ? patch[key] : '';
+        if (key === 'location') value = value.trim();
+        if (value !== (node[key] || '')) { node[key] = value; changed = true; }
+      });
     }
     ['x', 'y'].forEach(key => {
       if (typeof patch[key] === 'number' && isFinite(patch[key]) && patch[key] !== node[key]) {
@@ -640,6 +662,7 @@ const Store = (() => {
         y: typeof n.y === 'number' && isFinite(n.y) ? n.y : 0
       };
       if ('board' in node && !onBoard(node)) delete node.board;
+      BOARD_TEXT_FIELDS.forEach(key => { if (key in node && typeof node[key] !== 'string') delete node[key]; });
       return node;
     });
 

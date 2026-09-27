@@ -7,8 +7,8 @@ freely arranged **Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
 - Tabs at the left of the top bar: **Campaign** (the list and the
-  mindmaps described below), **Players**, **Notes** (see below) and
-  **NPCs**. Players and NPCs are empty for now. The back button returns
+  mindmaps described below), **Players**, **Notes** and **NPCs** (see
+  below). Players is empty for now. The back button returns
   from the other tabs to the campaign (to the list or the mindmap that was
   open), and the app remembers which tab was open
 - **Notes** tab: loose notes for the campaign, each a title and a
@@ -20,6 +20,16 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   with **Done** or by tapping outside it), **✕** deletes it (with Undo), and
   dragging a card by its title bar moves it. The description uses the same
   `**bold**` and links as a node's notes
+- **NPCs** tab: the campaign's NPCs, each with a name, a description, a
+  location and a note, listed in one group per location (A-Z, "No
+  location" last). Groups fold in, and tapping an NPC folds it out to show
+  its description and note (several at once); both are remembered on the
+  device. **Search** filters on all four fields. In edit mode, **+ New NPC**
+  (or **+** on a group, for an NPC at that location) adds one, **✎** on an
+  open NPC edits it right in the list (saved with **Done** or by tapping
+  outside it), and **✕** deletes it (with Undo). The location field
+  suggests the locations already in use, and changing it moves the NPC to
+  that group
 - Multiple independent campaigns, one active at a time
 - **Edit / View** switch in the top bar (the highlighted half is the current
   mode). View mode locks everything, for use during a session
@@ -246,6 +256,10 @@ authoritative description is at the top of `store.js`.
   dropped). They're in the same `nodes` array so Drive sync, backups and
   Undo handle them like any node. An older version of the app keeps them
   when it saves, but shows them as main nodes in the list.
+- `"board": "npcs"` is an NPC on the **NPCs** tab, the same way: `name`,
+  `notes` = description, plus two string fields `location` (`""` or missing
+  = no location) and `note`. `x`/`y` aren't used. A `location`/`note` that
+  isn't a string is dropped when loading.
 
 ### Local storage keys
 
@@ -263,3 +277,5 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list; kept while another tab is open) |
 | `rpg-notes-open-tab` | `players`, `notes` or `npcs` while that tab is open (removed on the Campaign tab) |
 | `rpg-notes-board-open-<campaignId>` | Ids of the notes folded out on that campaign's Notes tab |
+| `rpg-notes-npc-open-<campaignId>` | Ids of the NPCs folded out on that campaign's NPCs tab |
+| `rpg-notes-npc-collapsed-<campaignId>` | Locations folded in on that campaign's NPCs tab (`""` = No location) |

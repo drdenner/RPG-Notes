@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   TreeView.init(treeContainer, { onOpenMindmap: openMindmap });
   MindmapView.init(mindmapContainer, { onBack: closeMindmap, onSwitch: switchMindmap });
   NotesBoard.init(document.getElementById('notes-tab-view'));
+  NpcList.init(document.getElementById('npcs-tab-view'));
 
   // only the visible view is actually re-rendered when data changes; the
   // other one is marked dirty and catches up the moment you switch to it
@@ -56,9 +57,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     treeDirty = true;
-    // (the Notes board isn't kept up to date while hidden either: it
-    // renders whenever it's shown)
+    // (the Notes board and the NPC list aren't kept up to date while
+    // hidden either: they render whenever they're shown)
     if (activeView === 'notes') { NotesBoard.show(); return; }
+    if (activeView === 'npcs') { NpcList.show(); return; }
     if (activeView !== 'mindmap') return; // another tab: the Campaign tab catches up when you go back
     if (!Store.getById(MindmapView.getMainNodeId())) {
       route(); // its main node was deleted, or the campaign switched: back to the list
@@ -292,8 +294,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- the tabs: Campaign is the list and the mindmaps, Notes is the
-  // board of loose notes (notes-board.js); Players and NPCs are empty for
-  // now. Another tab lives in the URL too (#players,
+  // board of loose notes (notes-board.js), NPCs the NPCs by location
+  // (npc-list.js); Players is empty for now. Another tab lives in the URL
+  // too (#players,
   // #notes, #npcs), so the back button returns from it to the campaign -
   // to the list or the mindmap, whichever was open - and a reload stays on
   // it. The open tab is also remembered, like an open mindmap.
@@ -378,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isList && treeDirty) { TreeView.render(); treeDirty = false; }
     if (name === 'mindmap') MindmapView.open(mapId);
     if (name === 'notes') NotesBoard.show();
+    if (name === 'npcs') NpcList.show();
   }
 
   // reopened without anything in the URL: go back to the mindmap and/or
