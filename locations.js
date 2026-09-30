@@ -102,7 +102,10 @@ const LocationsView = (() => {
     );
     toggle.dataset.id = location.id;
     toggle.addEventListener('click', () => {
-      if (openLocations.has(location.id)) openLocations.delete(location.id);
+      if (openLocations.has(location.id)) {
+        openLocations.delete(location.id);
+        npcs.forEach(npc => openNpcs.delete(npc.id));
+      }
       else openLocations.add(location.id);
       saveState();
       render();
