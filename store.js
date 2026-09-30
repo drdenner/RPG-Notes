@@ -62,9 +62,9 @@
 //   - "board": "locations" is a location on the Locations tab (see
 //     locations.js): name is its title, notes its description, and "note"
 //     is its note. x/y aren't used there.
-//   - "board": "npcs" is an NPC on the Locations tab: name is the NPC's
-//     name, notes the description, "note" its note, and "locationId" the
-//     id of the location it belongs to. x/y aren't used there.
+//   - "board": "npcs" is an NPC on the NPCs tab: name is the NPC's name,
+//     notes the description, "note" its legacy note, and optional
+//     "locationId" the id of its current location. x/y aren't used there.
 //   - "board": "players" is a player on the Players tab (see
 //     player-list.js): name, notes = the note, and "items":
 //     [{ "title": string, "value": number (gp) }, ...], the player's magic
@@ -555,7 +555,7 @@ const Store = (() => {
     while (changed) {
       changed = false;
       nodes.forEach(n => {
-        if (((n.parentId && toDelete.has(n.parentId)) || (n.locationId && toDelete.has(n.locationId))) && !toDelete.has(n.id)) {
+        if (n.parentId && toDelete.has(n.parentId) && !toDelete.has(n.id)) {
           toDelete.add(n.id);
           changed = true;
         }

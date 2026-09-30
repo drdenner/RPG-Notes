@@ -53,7 +53,7 @@ body {
   flex-wrap: wrap;
 }
 
-/* the tabs (Campaign, Players, Notes, Locations) - look like the edit/view
+/* the tabs (Campaign, Players, Notes, Locations, NPCs) - look like the edit/view
    switch below, in the title font */
 .app-tabs .mode-btn {
   font-family: Georgia, 'Times New Roman', serif;
@@ -1303,6 +1303,16 @@ body.no-campaign #board-new-btn {
   font-size: 0.88rem;
 }
 
+.location-npc {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.location-npc .npc-name {
+  display: block;
+  margin-bottom: 3px;
+}
+
 .npc {
   border-bottom: 1px solid var(--border-soft);
 }
@@ -1420,8 +1430,52 @@ body.view-mode .npc-edit,
 body.view-mode .npc-del,
 body.view-mode .npc-group-add,
 body.view-mode #location-new-btn,
-body.no-campaign #location-new-btn {
+body.view-mode #npc-new-btn,
+body.no-campaign #location-new-btn,
+body.no-campaign #npc-new-btn {
   display: none !important;
+}
+
+.npc-directory {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.npc-directory-item {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.npc-directory-item.editing {
+  padding: 0;
+}
+
+.npc-directory-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.npc-directory-head .npc-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.npc-directory-location {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.npc-directory-description {
+  margin-top: 5px;
+  padding-right: 8px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 /* --- Players tab: magic items and wealth per player (player-list.js).

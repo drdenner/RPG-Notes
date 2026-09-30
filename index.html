@@ -25,7 +25,7 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
   <header class="topbar">
@@ -35,6 +35,7 @@
       <button class="mode-btn" data-tab="campaign" title="The campaign: the list and the mindmaps">Campaign</button>
       <button class="mode-btn" data-tab="players">Players</button>
       <button class="mode-btn" data-tab="locations">Locations</button>
+      <button class="mode-btn" data-tab="npcs">NPCs</button>
       <button class="mode-btn" data-tab="notes">Notes</button>
     </div>
     <div class="campaign-switcher">
@@ -149,17 +150,28 @@
         <button id="location-new-btn" class="btn btn-primary float-btn">+ New location</button>
       </div>
     </section>
+    <section id="npcs-tab-view" class="view">
+      <div class="npc-wrap">
+        <div class="npc-scroll">
+          <input id="npc-search" class="tree-search npc-search" type="search" placeholder="Search NPCs…" autocomplete="off">
+          <p id="npc-empty" class="npc-empty" hidden></p>
+          <ul id="npc-list" class="npc-directory"></ul>
+        </div>
+        <button id="npc-new-btn" class="btn btn-primary float-btn">+ New NPC</button>
+      </div>
+    </section>
   </main>
 
-  <script src="store.js?v=23"></script>
+  <script src="store.js?v=24"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=7"></script>
   <script src="drive-sync.js?v=27"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
   <script src="notes-board.js?v=1"></script>
-  <script src="locations.js?v=1"></script>
+  <script src="locations.js?v=2"></script>
+  <script src="npc-list.js?v=1"></script>
   <script src="player-list.js?v=2"></script>
-  <script src="app.js?v=28"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>

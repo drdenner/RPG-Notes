@@ -2,7 +2,7 @@
 // Glues the views together with the Store: initializes both views, keeps
 // whichever one is currently visible in sync with data changes (the other
 // just gets caught up when you switch to it, see renderAll/showView),
-// drives the tabs (Campaign, Players, Notes, Locations) and, on the Campaign
+// drives the tabs (Campaign, Players, Notes, Locations, NPCs) and, on the Campaign
 // tab, navigation between the list and a main node's mindmap, edit/view
 // mode, the Google Drive buttons, backup/import, Undo after deleting
 // nodes, and offline support (sw.js).
@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
   MindmapView.init(mindmapContainer, { onBack: closeMindmap, onSwitch: switchMindmap });
   NotesBoard.init(document.getElementById('notes-tab-view'));
   LocationsView.init(document.getElementById('locations-tab-view'));
+  NpcList.init(document.getElementById('npcs-tab-view'));
   PlayerList.init(document.getElementById('players-tab-view'));
 
   // only the visible view is actually re-rendered when data changes; the
@@ -62,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // while hidden either: they render whenever they're shown)
     if (activeView === 'notes') { NotesBoard.show(); return; }
     if (activeView === 'locations') { LocationsView.show(); return; }
+    if (activeView === 'npcs') { NpcList.show(); return; }
     if (activeView === 'players') { PlayerList.show(); return; }
     if (activeView !== 'mindmap') return; // another tab: the Campaign tab catches up when you go back
     if (!Store.getById(MindmapView.getMainNodeId())) {
@@ -296,14 +298,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- the tabs: Campaign is the list and the mindmaps, Notes is the
-  // board of loose notes (notes-board.js), Locations the locations and
-  // their NPCs (locations.js), Players each player's magic items and wealth
-  // (player-list.js). Another tab lives in the URL
+  // board of loose notes (notes-board.js), Locations the locations
+  // (locations.js), NPCs their own list (npc-list.js), and Players each
+  // player's magic items and wealth (player-list.js). Another tab lives in the URL
   // too (#players,
   // #notes, #locations), so the back button returns from it to the campaign -
   // to the list or the mindmap, whichever was open - and a reload stays on
   // it. The open tab is also remembered, like an open mindmap.
-  const TABS = ['players', 'notes', 'locations'];
+  const TABS = ['players', 'notes', 'locations', 'npcs'];
   const OPEN_TAB_KEY = 'rpg-notes-open-tab';
   const tabViews = {};
   TABS.forEach(tab => { tabViews[tab] = document.getElementById(tab + '-tab-view'); });
@@ -385,6 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (name === 'mindmap') MindmapView.open(mapId);
     if (name === 'notes') NotesBoard.show();
     if (name === 'locations') LocationsView.show();
+    if (name === 'npcs') NpcList.show();
     if (name === 'players') PlayerList.show();
   }
 

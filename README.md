@@ -7,7 +7,7 @@ freely arranged **Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
 - Tabs at the left of the top bar: **Campaign** (the list and the
-  mindmaps described below), **Players**, **Notes** and **Locations** (see
+  mindmaps described below), **Players**, **Notes**, **Locations** and **NPCs** (see
   below). The back button returns
   from the other tabs to the campaign (to the list or the mindmap that was
   open), and the app remembers which tab was open
@@ -30,13 +30,15 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   with **Done** or by tapping outside it), **✕** deletes it (with Undo), and
   dragging a card by its title bar moves it. The description uses the same
   `**bold**` and links as a node's notes
-- **Locations** tab: each location has a title, description and note, and
-  can contain NPCs. Locations fold out to show their details and NPCs;
-  tapping an NPC folds it out to show its description and note. In edit
-  mode, **+ New location** creates one, **+** on a location adds an NPC to
-  it, **✎** edits a location or NPC, and **✕** deletes it (with Undo).
-  Deleting a location also deletes its NPCs. **Search** filters locations
-  and linked NPCs.
+- **Locations** tab: each location has a title, description and note.
+  Opening one shows the NPCs currently assigned there, with their
+  descriptions. This is a read-only overview of NPCs; in edit mode,
+  **+ New location**, **✎** and **✕** manage locations. Deleting a location
+  keeps its NPCs and leaves them without a location. **Search** filters
+  locations and their NPCs.
+- **NPCs** tab: a simple list of NPC names, descriptions and locations.
+  NPCs can be assigned to a location or marked as **Traveling**. In edit
+  mode, **+ New NPC**, **✎** and **✕** add, edit or delete NPCs.
 - Multiple independent campaigns, one active at a time
 - **Edit / View** switch in the top bar (the highlighted half is the current
   mode). View mode locks everything, for use during a session

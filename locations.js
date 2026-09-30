@@ -6,7 +6,6 @@ const LocationsView = (() => {
   let listEl, searchEl, emptyEl, newBtn;
   let stateFor = null;
   let openLocations = new Set();
-  let openNpcs = new Set();
   let editing = null;
 
   function key(what) {
@@ -24,13 +23,11 @@ const LocationsView = (() => {
       }
     };
     openLocations = read('open');
-    openNpcs = read('npc-open');
   }
 
   function saveState() {
     try {
       localStorage.setItem(key('open'), JSON.stringify([...openLocations]));
-      localStorage.setItem(key('npc-open'), JSON.stringify([...openNpcs]));
     } catch (e) { /* storage unavailable - just not remembered */ }
   }
 
@@ -104,7 +101,6 @@ const LocationsView = (() => {
     toggle.addEventListener('click', () => {
       if (openLocations.has(location.id)) {
         openLocations.delete(location.id);
-        npcs.forEach(npc => openNpcs.delete(npc.id));
       }
       else openLocations.add(location.id);
       saveState();
@@ -115,12 +111,12 @@ const LocationsView = (() => {
     if (open && AppMode.isEditMode()) {
       const editBtn = el('button', 'btn-icon npc-edit', '✎');
       editBtn.title = 'Edit location';
-      editBtn.addEventListener('click', () => startEditing(location.id, 'location'));
+      editBtn.addEventListener('click', () => startEditing(location.id));
       const delBtn = el('button', 'btn-icon btn-danger npc-del', '✕');
       delBtn.title = 'Delete location';
       delBtn.addEventListener('click', () => {
         const prompt = npcs.length
-          ? `Delete "${location.name}" and its ${npcs.length} NPC${npcs.length === 1 ? '' : 's'}?`
+          ? `Delete the location "${location.name}"? Its ${npcs.length} NPC${npcs.length === 1 ? '' : 's'} will be kept without a location.`
           : `Delete the location "${location.name}"?`;
         if (confirm(prompt)) Store.deleteNode(location.id);
       });
@@ -134,60 +130,22 @@ const LocationsView = (() => {
       body.appendChild(textBlock('Note', location.note || '', 'No note.'));
       const npcHeading = el('div', 'location-npc-heading');
       npcHeading.appendChild(el('span', 'npc-label', 'NPCs'));
-      if (AppMode.isEditMode()) {
-        const addBtn = el('button', 'btn-icon npc-group-add', '+');
-        addBtn.title = `Add NPC to ${location.name}`;
-        addBtn.setAttribute('aria-label', `Add NPC to ${location.name}`);
-        addBtn.addEventListener('click', () => addNpc(location.id));
-        npcHeading.appendChild(addBtn);
-      }
       body.appendChild(npcHeading);
       const list = el('ul', 'npc-list');
-      if (npcs.length) npcs.forEach(npc => list.appendChild(renderNpc(npc)));
+      if (npcs.length) npcs.forEach(npc => {
+        const item = el('li', 'location-npc');
+        item.appendChild(el('strong', 'npc-name', npc.name));
+        const description = el('div', 'npc-text');
+        if (npc.notes) description.innerHTML = NotesEditor.renderNotes(npc.notes);
+        else { description.textContent = 'No description.'; description.classList.add('npc-text-empty'); }
+        item.appendChild(description);
+        list.appendChild(item);
+      });
       else list.appendChild(el('li', 'location-no-npcs', 'No NPCs yet.'));
       body.appendChild(list);
       section.appendChild(body);
     }
     return section;
-  }
-
-  function renderNpc(npc) {
-    const open = openNpcs.has(npc.id);
-    const item = el('li', 'npc' + (open ? ' open' : ''));
-    item.dataset.id = npc.id;
-    const head = el('div', 'npc-head');
-    const toggle = el('button', 'npc-toggle');
-    toggle.setAttribute('aria-expanded', String(open));
-    toggle.append(el('span', 'npc-caret', open ? '▾' : '▸'), el('span', 'npc-name', npc.name));
-    if (!open && npc.notes) toggle.appendChild(el('span', 'npc-preview', npc.notes.replace(/\*\*/g, '').split('\n')[0]));
-    toggle.addEventListener('click', () => {
-      if (openNpcs.has(npc.id)) openNpcs.delete(npc.id);
-      else openNpcs.add(npc.id);
-      saveState();
-      render();
-    });
-    head.appendChild(toggle);
-
-    if (open && AppMode.isEditMode()) {
-      const editBtn = el('button', 'btn-icon npc-edit', '✎');
-      editBtn.title = 'Edit NPC';
-      editBtn.addEventListener('click', () => startEditing(npc.id, 'npc'));
-      const delBtn = el('button', 'btn-icon btn-danger npc-del', '✕');
-      delBtn.title = 'Delete NPC';
-      delBtn.addEventListener('click', () => {
-        if (confirm(`Delete the NPC "${npc.name}"?`)) Store.deleteNode(npc.id);
-      });
-      head.append(editBtn, delBtn);
-    }
-    item.appendChild(head);
-
-    if (open) {
-      const body = el('div', 'npc-body');
-      body.appendChild(textBlock('Description', npc.notes, 'No description.'));
-      body.appendChild(textBlock('Note', npc.note || '', 'No note.'));
-      item.appendChild(body);
-    }
-    return item;
   }
 
   function textBlock(label, text, emptyText) {
@@ -208,30 +166,15 @@ const LocationsView = (() => {
     openLocations.add(location.id);
     saveState();
     render();
-    startEditing(location.id, 'location', true);
+    startEditing(location.id, true);
   }
 
-  function addNpc(locationId) {
-    if (!AppMode.isEditMode()) return;
-    const npc = Store.addBoardNode(NPC_BOARD, 'New NPC', 0, 0, { locationId, note: '' });
-    if (!npc) return;
-    searchEl.value = '';
-    openLocations.add(locationId);
-    openNpcs.add(npc.id);
-    saveState();
-    render();
-    startEditing(npc.id, 'npc', true);
-  }
-
-  function startEditing(id, type, isNew = false) {
+  function startEditing(id, isNew = false) {
     if (!AppMode.isEditMode()) return;
     if (editing) finishEditing();
-    const board = type === 'location' ? LOCATION_BOARD : NPC_BOARD;
-    const record = Store.getBoardNodes(board).find(node => node.id === id);
-    const target = type === 'location'
-      ? [...listEl.querySelectorAll('.location-group')].find(section =>
-          section.querySelector('.npc-group-toggle')?.dataset.id === id)
-      : listEl.querySelector(`.npc[data-id="${CSS.escape(id)}"]`);
+    const record = Store.getBoardNodes(LOCATION_BOARD).find(node => node.id === id);
+    const target = [...listEl.querySelectorAll('.location-group')].find(section =>
+      section.querySelector('.npc-group-toggle')?.dataset.id === id);
     if (!record || !target) return;
 
     const form = el('div', 'npc-form');
@@ -241,7 +184,7 @@ const LocationsView = (() => {
       form.appendChild(wrap);
       return input;
     };
-    const title = field(type === 'location' ? 'Title' : 'Name', Object.assign(el('input', 'npc-input'), {
+    const title = field('Title', Object.assign(el('input', 'npc-input'), {
       type: 'text', value: record.name
     }));
     const description = field('Description', Object.assign(el('textarea', 'npc-input'), {
