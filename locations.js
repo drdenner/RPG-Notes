@@ -2,6 +2,7 @@
 const LocationsView = (() => {
   const LOCATION_BOARD = 'locations';
   const NPC_BOARD = 'npcs';
+  const NO_LOCATION_ID = '__no-location__';
 
   let listEl, searchEl, emptyEl, newBtn;
   let stateFor = null;
@@ -69,24 +70,32 @@ const LocationsView = (() => {
     ].some(text => text.toLowerCase().includes(query));
 
     listEl.innerHTML = '';
-    const shown = locations
+    const knownLocationIds = new Set(locations.map(location => location.id));
+    const unassignedNpcs = npcs
+      .filter(npc => !npc.locationId || !knownLocationIds.has(npc.locationId))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const noLocation = { id: NO_LOCATION_ID, name: 'No location' };
+    const locationGroups = locations
       .map(location => ({
         location,
         npcs: npcs.filter(npc => npc.locationId === location.id)
           .sort((a, b) => a.name.localeCompare(b.name))
       }))
-      .filter(group => matches(group.location, group.npcs))
       .sort((a, b) => a.location.name.localeCompare(b.location.name));
+    const shown = [
+      { location: noLocation, npcs: unassignedNpcs, noLocation: true },
+      ...locationGroups
+    ].filter(group => matches(group.location, group.npcs));
 
     emptyEl.hidden = shown.length > 0;
     emptyEl.textContent = !Store.getCurrentCampaignId() ? 'Create or pick a campaign first.'
       : locations.length ? 'No locations match.'
       : 'No locations yet.' + (AppMode.isEditMode() ? ' Tap "+ New location" to add one.' : '');
 
-    shown.forEach(group => listEl.appendChild(renderLocation(group.location, group.npcs, !!query)));
+    shown.forEach(group => listEl.appendChild(renderLocation(group.location, group.npcs, !!query, group.noLocation)));
   }
 
-  function renderLocation(location, npcs, searching) {
+  function renderLocation(location, npcs, searching, noLocation = false) {
     const open = searching || openLocations.has(location.id);
     const section = el('section', 'npc-group location-group' + (open ? ' open' : ''));
     const head = el('div', 'npc-group-head');
@@ -108,7 +117,7 @@ const LocationsView = (() => {
     });
     head.appendChild(toggle);
 
-    if (open && AppMode.isEditMode()) {
+    if (open && AppMode.isEditMode() && !noLocation) {
       const editBtn = el('button', 'btn-icon npc-edit', '✎');
       editBtn.title = 'Edit location';
       editBtn.addEventListener('click', () => startEditing(location.id));
@@ -126,8 +135,10 @@ const LocationsView = (() => {
 
     if (open) {
       const body = el('div', 'location-body');
-      body.appendChild(textBlock('Description', location.notes, 'No description.'));
-      body.appendChild(textBlock('Note', location.note || '', 'No note.'));
+      if (!noLocation) {
+        body.appendChild(textBlock('Description', location.notes, 'No description.'));
+        body.appendChild(textBlock('Note', location.note || '', 'No note.'));
+      }
       const npcHeading = el('div', 'location-npc-heading');
       npcHeading.appendChild(el('span', 'npc-label', 'NPCs'));
       body.appendChild(npcHeading);

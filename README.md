@@ -32,7 +32,8 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   `**bold**` and links as a node's notes
 - **Locations** tab: each location has a title, description and note.
   Opening one shows the NPCs currently assigned there, with their
-  descriptions. This is a read-only overview of NPCs; in edit mode,
+  descriptions. **No location** stays at the top and shows NPCs without a
+  current location. This is a read-only overview of NPCs; in edit mode,
   **+ New location**, **✎** and **✕** manage locations. Deleting a location
   keeps its NPCs and leaves them without a location. **Search** filters
   locations and their NPCs.
