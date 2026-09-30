@@ -7,7 +7,7 @@ freely arranged **Mindmap**. Each node has a name and
 plain-text notes, where `**bold**` renders bold and URLs become links.
 
 - Tabs at the left of the top bar: **Campaign** (the list and the
-  mindmaps described below), **Players**, **Notes** and **NPCs** (see
+  mindmaps described below), **Players**, **Notes** and **Locations** (see
   below). The back button returns
   from the other tabs to the campaign (to the list or the mindmap that was
   open), and the app remembers which tab was open
@@ -30,16 +30,13 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   with **Done** or by tapping outside it), **✕** deletes it (with Undo), and
   dragging a card by its title bar moves it. The description uses the same
   `**bold**` and links as a node's notes
-- **NPCs** tab: the campaign's NPCs, each with a name, a description, a
-  location and a note, listed in one group per location (A-Z, "No
-  location" last). Groups fold in, and tapping an NPC folds it out to show
-  its description and note (several at once); both are remembered on the
-  device. **Search** filters on all four fields. In edit mode, **+ New NPC**
-  (or **+** on a group, for an NPC at that location) adds one, **✎** on an
-  open NPC edits it right in the list (saved with **Done** or by tapping
-  outside it), and **✕** deletes it (with Undo). The location field
-  suggests the locations already in use, and changing it moves the NPC to
-  that group
+- **Locations** tab: each location has a title, description and note, and
+  can contain NPCs. Locations fold out to show their details and NPCs;
+  tapping an NPC folds it out to show its description and note. In edit
+  mode, **+ New location** creates one, **+** on a location adds an NPC to
+  it, **✎** edits a location or NPC, and **✕** deletes it (with Undo).
+  Deleting a location also deletes its NPCs. **Search** filters locations
+  and linked NPCs.
 - Multiple independent campaigns, one active at a time
 - **Edit / View** switch in the top bar (the highlighted half is the current
   mode). View mode locks everything, for use during a session
@@ -266,10 +263,12 @@ authoritative description is at the top of `store.js`.
   dropped). They're in the same `nodes` array so Drive sync, backups and
   Undo handle them like any node. An older version of the app keeps them
   when it saves, but shows them as main nodes in the list.
-- `"board": "npcs"` is an NPC on the **NPCs** tab, the same way: `name`,
-  `notes` = description, plus two string fields `location` (`""` or missing
-  = no location) and `note`. `x`/`y` aren't used. A `location`/`note` that
-  isn't a string is dropped when loading.
+- `"board": "locations"` is a location on the **Locations** tab: `name` is
+  its title, `notes` its description, and `note` its note. `x`/`y` aren't
+  used.
+- `"board": "npcs"` is an NPC on the **Locations** tab: `name`, `notes` =
+  description, `note`, and `locationId` for the location it belongs to.
+  `x`/`y` aren't used.
 - `"board": "players"` is a player on the **Players** tab: `name`, `notes`
   = the note, and `items`, a list of `{ "title": string, "value": number }`
   (gp). Loading a file drops an `items` that isn't a list, leaves out items
@@ -291,8 +290,8 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version. A campaign whose current `updatedAt` differs has changes Drive doesn't have |
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
 | `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list; kept while another tab is open) |
-| `rpg-notes-open-tab` | `players`, `notes` or `npcs` while that tab is open (removed on the Campaign tab) |
+| `rpg-notes-open-tab` | `players`, `notes` or `locations` while that tab is open (removed on the Campaign tab) |
 | `rpg-notes-board-open-<campaignId>` | Ids of the notes folded out on that campaign's Notes tab |
-| `rpg-notes-npc-open-<campaignId>` | Ids of the NPCs folded out on that campaign's NPCs tab |
-| `rpg-notes-npc-collapsed-<campaignId>` | Locations folded in on that campaign's NPCs tab (`""` = No location) |
+| `rpg-notes-locations-open-<campaignId>` | Ids of the locations folded out on that campaign's Locations tab |
+| `rpg-notes-locations-npc-open-<campaignId>` | Ids of the NPCs folded out on that campaign's Locations tab |
 | `rpg-notes-player-open-<campaignId>` | Ids of the players folded out on that campaign's Players tab |

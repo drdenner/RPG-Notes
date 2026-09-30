@@ -25,7 +25,7 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=25">
+<link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
   <header class="topbar">
@@ -34,7 +34,7 @@
     <div class="mode-switch app-tabs" role="group" aria-label="Tabs">
       <button class="mode-btn" data-tab="campaign" title="The campaign: the list and the mindmaps">Campaign</button>
       <button class="mode-btn" data-tab="players">Players</button>
-      <button class="mode-btn" data-tab="npcs">NPCs</button>
+      <button class="mode-btn" data-tab="locations">Locations</button>
       <button class="mode-btn" data-tab="notes">Notes</button>
     </div>
     <div class="campaign-switcher">
@@ -138,29 +138,28 @@
         <button id="board-new-btn" class="btn btn-primary float-btn">+ New note</button>
       </div>
     </section>
-    <!-- NPCs: grouped by location (npc-list.js) -->
-    <section id="npcs-tab-view" class="view">
+    <!-- Locations: locations with descriptions, notes and linked NPCs (locations.js) -->
+    <section id="locations-tab-view" class="view">
       <div class="npc-wrap">
         <div class="npc-scroll">
-          <input id="npc-search" class="tree-search npc-search" type="search" placeholder="Search NPCs, locations, notes…" autocomplete="off">
-          <p id="npc-empty" class="npc-empty" hidden></p>
-          <div id="npc-groups"></div>
+          <input id="location-search" class="tree-search npc-search" type="search" placeholder="Search locations and NPCs…" autocomplete="off">
+          <p id="location-empty" class="npc-empty" hidden></p>
+          <div id="location-list"></div>
         </div>
-        <button id="npc-new-btn" class="btn btn-primary float-btn">+ New NPC</button>
-        <datalist id="npc-locations"></datalist>
+        <button id="location-new-btn" class="btn btn-primary float-btn">+ New location</button>
       </div>
     </section>
   </main>
 
-  <script src="store.js?v=22"></script>
+  <script src="store.js?v=23"></script>
   <script src="app-mode.js?v=1"></script>
   <script src="notes-editor.js?v=7"></script>
   <script src="drive-sync.js?v=27"></script>
   <script src="tree-view.js?v=6"></script>
   <script src="mindmap-view.js?v=12"></script>
   <script src="notes-board.js?v=1"></script>
-  <script src="npc-list.js?v=1"></script>
+  <script src="locations.js?v=1"></script>
   <script src="player-list.js?v=2"></script>
-  <script src="app.js?v=27"></script>
+  <script src="app.js?v=28"></script>
 </body>
 </html>

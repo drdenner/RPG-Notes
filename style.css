@@ -53,7 +53,7 @@ body {
   flex-wrap: wrap;
 }
 
-/* the tabs (Campaign, Players, Notes, NPCs) - look like the edit/view
+/* the tabs (Campaign, Players, Notes, Locations) - look like the edit/view
    switch below, in the title font */
 .app-tabs .mode-btn {
   font-family: Georgia, 'Times New Roman', serif;
@@ -975,7 +975,7 @@ body.no-campaign #tree-new-root-btn {
   font-style: italic;
 }
 
-/* --- the Players, Notes and NPCs tabs --- */
+/* --- the Players, Notes and Locations tabs --- */
 
 /* "No campaigns on this device" belongs to the Campaign tab */
 body.other-tab .no-campaign-msg {
@@ -1176,7 +1176,7 @@ body.no-campaign #board-new-btn {
   font-size: 0.85rem;
 }
 
-/* --- NPCs tab: NPCs grouped by location (npc-list.js) --- */
+/* --- Locations tab: locations with linked NPCs (locations.js) --- */
 
 /* like the list: the float button stays put while the list scrolls */
 .npc-wrap {
@@ -1213,6 +1213,14 @@ body.no-campaign #board-new-btn {
 
 .npc-group {
   margin-top: 14px;
+}
+
+.location-group {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.location-group.open {
+  background: rgba(201, 162, 91, 0.04);
 }
 
 .npc-group-head {
@@ -1272,6 +1280,27 @@ body.no-campaign #board-new-btn {
   list-style: none;
   margin: 0;
   padding: 0 0 0 14px;
+}
+
+.location-body {
+  padding: 0 12px 12px 32px;
+}
+
+.location-npc-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.location-npc-heading .npc-label {
+  margin: 0;
+}
+
+.location-no-npcs {
+  padding: 8px 0;
+  color: var(--text-dim);
+  font-size: 0.88rem;
 }
 
 .npc {
@@ -1390,8 +1419,8 @@ textarea.npc-input {
 body.view-mode .npc-edit,
 body.view-mode .npc-del,
 body.view-mode .npc-group-add,
-body.view-mode #npc-new-btn,
-body.no-campaign #npc-new-btn {
+body.view-mode #location-new-btn,
+body.no-campaign #location-new-btn {
   display: none !important;
 }
 

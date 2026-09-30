@@ -59,10 +59,12 @@
 //     older version of the app keeps them (it just shows them as main
 //     nodes). getAll()/getById() leave board nodes out, so the list and
 //     the mindmaps never see them; getBoardNodes() returns them.
-//   - "board": "npcs" is an NPC on the NPCs tab (see npc-list.js): name is
-//     the NPC's name, notes the description, and two more string fields,
-//     "location" (the list is grouped by it; "" = no location) and "note".
-//     x/y aren't used there.
+//   - "board": "locations" is a location on the Locations tab (see
+//     locations.js): name is its title, notes its description, and "note"
+//     is its note. x/y aren't used there.
+//   - "board": "npcs" is an NPC on the Locations tab: name is the NPC's
+//     name, notes the description, "note" its note, and "locationId" the
+//     id of the location it belongs to. x/y aren't used there.
 //   - "board": "players" is a player on the Players tab (see
 //     player-list.js): name, notes = the note, and "items":
 //     [{ "title": string, "value": number (gp) }, ...], the player's magic
@@ -392,9 +394,9 @@ const Store = (() => {
     return { ...node };
   }
 
-  // the extra text fields a board node can have (NPCs: location, note),
+  // the extra text fields a board node can have (locations and NPCs),
   // set through addBoardNode/updateNode
-  const BOARD_TEXT_FIELDS = ['location', 'note'];
+  const BOARD_TEXT_FIELDS = ['note', 'locationId'];
 
   // an amount of gp (an item's value): a finite number, to the copper;
   // anything else is no value (undefined)
@@ -432,7 +434,7 @@ const Store = (() => {
       board
     };
     BOARD_TEXT_FIELDS.forEach(key => {
-      if (typeof fields[key] === 'string') node[key] = key === 'location' ? fields[key].trim() : fields[key];
+      if (typeof fields[key] === 'string') node[key] = key === 'locationId' ? fields[key].trim() : fields[key];
     });
     if (cleanItems(fields.items)) node.items = cleanItems(fields.items);
     nodes.push(node);
@@ -481,7 +483,7 @@ const Store = (() => {
   // applies several changes to one node as ONE mutation (one save, one
   // render, one Drive sync scheduled) - e.g. name + notes from the editor,
   // or position + new parent from a mindmap drag. `patch` may contain any
-  // of name, notes, x, y, parentId (and, on a board node, location, note,
+  // of name, notes, x, y, parentId (and, on a board node, locationId, note,
   // and items); each is validated on its own, and an
   // invalid one (e.g. a parentId that would create a cycle) is skipped
   // while the rest of the patch still applies
@@ -505,7 +507,7 @@ const Store = (() => {
       BOARD_TEXT_FIELDS.forEach(key => {
         if (!(key in patch)) return;
         let value = typeof patch[key] === 'string' ? patch[key] : '';
-        if (key === 'location') value = value.trim();
+        if (key === 'locationId') value = value.trim();
         if (value !== (node[key] || '')) { node[key] = value; changed = true; }
       });
       if ('items' in patch) {
@@ -553,7 +555,7 @@ const Store = (() => {
     while (changed) {
       changed = false;
       nodes.forEach(n => {
-        if (n.parentId && toDelete.has(n.parentId) && !toDelete.has(n.id)) {
+        if (((n.parentId && toDelete.has(n.parentId)) || (n.locationId && toDelete.has(n.locationId))) && !toDelete.has(n.id)) {
           toDelete.add(n.id);
           changed = true;
         }
