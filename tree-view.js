@@ -1,11 +1,17 @@
 // tree-view.js
-// Nested list view of the notes.
+// The Locations tab's list: the campaign's locations as a nested list
+// (main locations, the places inside them, and so on), each with the NPCs
+// that are there shown under its row.
 // Renders <ul>/<li> from Store, and handles:
 //   - collapse/expand per node (remembered per campaign in localStorage)
 //   - clicking a node's name (or the empty part of its row) opens it
 //     (NotesEditor - rename and notes both live there, there's no separate
 //     rename/notes button)
 //   - add child / delete (recursive, via Store.deleteNode)
+//   - 👤+ opens the location's panel at its NPCs, to add one (NPCs are
+//     managed in that panel, see notes-editor.js); tapping an NPC's name
+//     under a row opens the panel too
+//   - search also finds a location by the names of its NPCs
 //   - a "🗺 Mindmap" button on every main node (root node) that opens the
 //     mindmap for it (onOpenMindmap, handled by app.js)
 //   - search: filters the list to nodes whose name or notes contain the
@@ -29,10 +35,11 @@ const TreeView = (() => {
   let noResultsEl = null;
   const collapsed = new Set(); // ids that are currently collapsed (in the current campaign)
   let collapsedCampaignId = null; // the campaign `collapsed` was loaded for
-  const entries = new Map();   // node id -> { li, row, toggle, nameSpan, mapBtn, childUl, cached }
+  const entries = new Map();   // node id -> { li, row, toggle, nameSpan, mapBtn, npcLine, npcKey, childUl, cached }
   let onOpenMindmap = null;
   let query = '';              // current search text, lowercased ('' = no search)
-  let searchHits = new Set();  // ids whose name/notes match `query`
+  let searchHits = new Set();  // ids whose name/notes/NPCs match `query`
+  let npcsByLocation = new Map(); // location id -> [NPC, ...] (A-Z), set by render
 
   function init(container, callbacks) {
     listEl = container.querySelector('#tree-list');
@@ -40,7 +47,7 @@ const TreeView = (() => {
     onOpenMindmap = callbacks.onOpenMindmap;
 
     container.querySelector('#tree-new-root-btn').addEventListener('click', () => {
-      const node = Store.addNode('New main node', null);
+      const node = Store.addNode('New location', null);
       if (node) NotesEditor.open(node.id, { isNew: true });
     });
 
@@ -79,6 +86,14 @@ const TreeView = (() => {
 
     const allNodes = Store.getAll();
     const nodeById = new Map(allNodes.map(n => [n.id, n]));
+    npcsByLocation = new Map();
+    Store.getBoardNodes('npcs')
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(npc => {
+        if (!npc.locationId) return;
+        if (!npcsByLocation.has(npc.locationId)) npcsByLocation.set(npc.locationId, []);
+        npcsByLocation.get(npc.locationId).push(npc);
+      });
 
     // searching: only the matching nodes and their ancestors are shown
     // (everything expanded), with the matches highlighted
@@ -87,7 +102,9 @@ const TreeView = (() => {
     if (query) {
       const shown = new Set();
       allNodes.forEach(n => {
-        if (!n.name.toLowerCase().includes(query) && !(n.notes || '').toLowerCase().includes(query)) return;
+        const npcNames = (npcsByLocation.get(n.id) || []).map(npc => npc.name.toLowerCase());
+        if (!n.name.toLowerCase().includes(query) && !(n.notes || '').toLowerCase().includes(query) &&
+            !npcNames.some(name => name.includes(query))) return;
         searchHits.add(n.id);
         for (let x = n; x && !shown.has(x.id); x = nodeById.get(x.parentId)) shown.add(x.id);
       });
@@ -136,6 +153,7 @@ const TreeView = (() => {
 
       const childNodes = childrenByParent.get(node.id) || [];
       updateToggle(entry, childNodes.length);
+      updateNpcLine(entry, npcsByLocation.get(node.id) || []);
       entry.row.classList.toggle('search-hit', searchHits.has(node.id));
 
       if (childNodes.length > 0 && (query || !collapsed.has(node.id))) {
@@ -206,7 +224,7 @@ const TreeView = (() => {
     // it's outside .tree-actions so it stays usable in view mode
     const mapBtn = document.createElement('button');
     mapBtn.className = 'tree-map-btn';
-    mapBtn.title = 'Open the mindmap for this main node';
+    mapBtn.title = 'Open the mindmap for this main location';
     mapBtn.textContent = '🗺 Mindmap';
     mapBtn.hidden = !!node.parentId;
     mapBtn.addEventListener('click', e => {
@@ -222,13 +240,22 @@ const TreeView = (() => {
 
     const addBtn = document.createElement('button');
     addBtn.className = 'btn-icon';
-    addBtn.title = 'Add child node';
+    addBtn.title = 'Add a location inside this one';
     addBtn.textContent = '+';
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (collapsed.delete(entry.cached.id)) saveCollapsed();
-      const child = Store.addNode('New node', entry.cached.id);
+      const child = Store.addNode('New location', entry.cached.id);
       NotesEditor.open(child.id, { isNew: true });
+    });
+
+    const npcBtn = document.createElement('button');
+    npcBtn.className = 'btn-icon tree-npc-btn';
+    npcBtn.title = 'Add an NPC here';
+    npcBtn.textContent = '👤+';
+    npcBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      NotesEditor.open(entry.cached.id, { showNpcs: true });
     });
 
     const delBtn = document.createElement('button');
@@ -242,7 +269,7 @@ const TreeView = (() => {
       }
     });
 
-    actions.append(addBtn, delBtn);
+    actions.append(npcBtn, addBtn, delBtn);
     row.appendChild(actions);
     // the name only takes the space it needs (so the mindmap button sits
     // right next to it) - tapping the rest of the row opens the node too
@@ -251,6 +278,14 @@ const TreeView = (() => {
     });
     li.appendChild(row);
     entry.row = row;
+
+    // the NPCs at this location, under the row (filled by updateNpcLine)
+    const npcLine = document.createElement('div');
+    npcLine.className = 'tree-npcs';
+    npcLine.hidden = true;
+    li.appendChild(npcLine);
+    entry.npcLine = npcLine;
+    entry.npcKey = '';
 
     entries.set(node.id, entry);
     return entry;
@@ -262,6 +297,21 @@ const TreeView = (() => {
     if (!!prev.notes !== !!node.notes) entry.nameSpan.classList.toggle('has-notes', !!node.notes);
     if (!!prev.parentId !== !!node.parentId) entry.mapBtn.hidden = !!node.parentId; // became/stopped being a root node
     entry.cached = node;
+  }
+
+  function updateNpcLine(entry, npcs) {
+    const key = JSON.stringify(npcs.map(npc => [npc.id, npc.name]));
+    if (key === entry.npcKey) return;
+    entry.npcKey = key;
+    entry.npcLine.innerHTML = '';
+    entry.npcLine.hidden = !npcs.length;
+    npcs.forEach(npc => {
+      const chip = document.createElement('button');
+      chip.className = 'tree-npc';
+      chip.textContent = '👤 ' + npc.name;
+      chip.addEventListener('click', () => NotesEditor.open(entry.cached.id, { showNpcs: true }));
+      entry.npcLine.appendChild(chip);
+    });
   }
 
   function updateToggle(entry, childCount) {
@@ -291,7 +341,9 @@ const TreeView = (() => {
 
       function onMove(ev) {
         const elUnder = document.elementFromPoint(ev.clientX, ev.clientY);
-        const targetRow = elUnder && elUnder.closest('.tree-row');
+        // (the NPC line under a row counts as that row)
+        const npcLine = elUnder && elUnder.closest('.tree-npcs');
+        const targetRow = npcLine ? npcLine.previousElementSibling : elUnder && elUnder.closest('.tree-row');
         if (currentTargetRow && currentTargetRow !== targetRow) {
           currentTargetRow.classList.remove('drop-target');
           currentTargetRow = null;
@@ -317,7 +369,7 @@ const TreeView = (() => {
         } else if (ev.type === 'pointerup') {
           // dropped on empty space in the list -> move to root level
           const elUnder = document.elementFromPoint(ev.clientX, ev.clientY);
-          if (elUnder && (elUnder === listEl || listEl.contains(elUnder)) && !elUnder.closest('.tree-row')) {
+          if (elUnder && (elUnder === listEl || listEl.contains(elUnder)) && !elUnder.closest('.tree-row, .tree-npcs')) {
             Store.moveNode(entry.cached.id, null);
           }
         }

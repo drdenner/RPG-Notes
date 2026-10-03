@@ -25,18 +25,16 @@
   keeps the app working offline, caches files by these same URLs, so
   bumping the number is all an update needs there too.)
 -->
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
   <header class="topbar">
-    <!-- the tabs: Campaign is the list and the mindmaps; the highlighted
-         one is open -->
+    <!-- the tabs; the highlighted one is open -->
     <div class="mode-switch app-tabs" role="group" aria-label="Tabs">
-      <button class="mode-btn" data-tab="campaign" title="The campaign: the list and the mindmaps">Campaign</button>
-      <button class="mode-btn" data-tab="players">Players</button>
-      <button class="mode-btn" data-tab="locations">Locations</button>
+      <button class="mode-btn" data-tab="map" title="The campaign map, with a pin for each location">Map</button>
+      <button class="mode-btn" data-tab="locations" title="The locations, as a list and as mindmaps">Locations</button>
       <button class="mode-btn" data-tab="npcs">NPCs</button>
-      <button class="mode-btn" data-tab="notes">Notes</button>
+      <button class="mode-btn" data-tab="players">Players</button>
     </div>
     <div class="campaign-switcher">
       <select id="campaign-select" class="campaign-select" title="Switch campaign"></select>
@@ -93,30 +91,45 @@
 
   <main class="app-main">
     <p class="no-campaign-msg">No campaigns on this device. Create one with <strong>+</strong>, or connect Google Drive and pick a ☁ campaign from the list.</p>
+    <!-- Map: the map picture with pins for locations (map-view.js). The
+         picture is a fixed file: replace maps/map.jpg and bump its ?v=N
+         (linked here, so sw.js keeps it for offline use too) -->
+    <section id="map-tab-view" class="view">
+      <div id="map-canvas" class="mindmap-canvas map-canvas">
+        <div id="map-world" class="mindmap-world">
+          <img id="map-image" class="map-image" src="maps/map.jpg?v=1" alt="" draggable="false">
+        </div>
+        <div id="map-pins" class="map-pins"></div>
+        <nav id="map-bar" class="mindmap-bar">
+          <button id="map-pin-btn" class="btn" title="Add a pin in the middle of the screen">+ Pin</button>
+        </nav>
+        <p id="map-empty" class="board-empty" hidden></p>
+      </div>
+    </section>
+    <!-- Locations: the list (tree-view.js) and a location's mindmap
+         (mindmap-view.js) -->
     <section id="tree-view" class="view">
       <div id="tree-list-wrap" class="tree-list-wrap">
         <div class="tree-search-wrap">
-          <input id="tree-search" class="tree-search" type="search" placeholder="Search names and notes…" autocomplete="off">
+          <input id="tree-search" class="tree-search" type="search" placeholder="Search locations, notes and NPCs…" autocomplete="off">
         </div>
         <p id="tree-no-results" class="tree-no-results" hidden>No matches.</p>
         <ul id="tree-list" class="tree-list"></ul>
-        <button id="tree-new-root-btn" class="btn btn-primary float-btn">+ New main node</button>
+        <button id="tree-new-root-btn" class="btn btn-primary float-btn">+ New location</button>
       </div>
     </section>
 
     <section id="mindmap-view" class="view">
       <div id="mindmap-canvas" class="mindmap-canvas">
         <nav class="mindmap-bar">
-          <button id="mindmap-back-btn" class="btn" title="Back to the list">← List</button>
-          <select id="mindmap-main-select" class="mindmap-main-select" title="Switch to another main node"></select>
-          <button id="mindmap-arrange-btn" class="btn" title="Lay out every node in this mindmap as a tidy tree">Arrange</button>
+          <button id="mindmap-back-btn" class="btn" title="Back to the list or the map">← Back</button>
+          <select id="mindmap-main-select" class="mindmap-main-select" title="Switch to another main location"></select>
         </nav>
         <div id="mindmap-world" class="mindmap-world">
           <svg id="mindmap-svg" class="mindmap-svg"></svg>
         </div>
       </div>
     </section>
-    <!-- the other tabs - empty for now -->
     <!-- Players: magic items and wealth per player (player-list.js) -->
     <section id="players-tab-view" class="view">
       <div class="npc-wrap">
@@ -131,25 +144,7 @@
         <button id="player-new-btn" class="btn btn-primary float-btn">+ New player</button>
       </div>
     </section>
-    <!-- Notes: loose notes as cards on a board (notes-board.js) -->
-    <section id="notes-tab-view" class="view">
-      <div id="board-canvas" class="mindmap-canvas board-canvas">
-        <div id="board-world" class="mindmap-world"></div>
-        <p id="board-empty" class="board-empty" hidden></p>
-        <button id="board-new-btn" class="btn btn-primary float-btn">+ New note</button>
-      </div>
-    </section>
-    <!-- Locations: locations with descriptions, notes and linked NPCs (locations.js) -->
-    <section id="locations-tab-view" class="view">
-      <div class="npc-wrap">
-        <div class="npc-scroll">
-          <input id="location-search" class="tree-search npc-search" type="search" placeholder="Search locations and NPCs…" autocomplete="off">
-          <p id="location-empty" class="npc-empty" hidden></p>
-          <div id="location-list"></div>
-        </div>
-        <button id="location-new-btn" class="btn btn-primary float-btn">+ New location</button>
-      </div>
-    </section>
+    <!-- NPCs: every NPC, with the location it's at (npc-list.js) -->
     <section id="npcs-tab-view" class="view">
       <div class="npc-wrap">
         <div class="npc-scroll">
@@ -162,16 +157,15 @@
     </section>
   </main>
 
-  <script src="store.js?v=24"></script>
+  <script src="store.js?v=26"></script>
   <script src="app-mode.js?v=1"></script>
-  <script src="notes-editor.js?v=7"></script>
+  <script src="notes-editor.js?v=8"></script>
   <script src="drive-sync.js?v=27"></script>
-  <script src="tree-view.js?v=6"></script>
-  <script src="mindmap-view.js?v=12"></script>
-  <script src="notes-board.js?v=1"></script>
-  <script src="locations.js?v=3"></script>
-  <script src="npc-list.js?v=1"></script>
+  <script src="tree-view.js?v=7"></script>
+  <script src="mindmap-view.js?v=23"></script>
+  <script src="map-view.js?v=1"></script>
+  <script src="npc-list.js?v=2"></script>
   <script src="player-list.js?v=2"></script>
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>

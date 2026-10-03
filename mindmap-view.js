@@ -2,13 +2,14 @@
 // Mindmap view: nodes as freely placeable boxes on a "world" layer
 // (mindmap-world), with SVG lines showing parent/child connections.
 //
-// - It always shows ONE main node (a root node, e.g. a chapter) and its
-//   whole subtree - opened from that node's 🗺 button in the list view (see
-//   app.js). The bar at the top goes back to the list, or switches to
-//   another main node via a dropdown. The data doesn't change at all: which
-//   nodes are shown is just a filter on parentId.
-// - "Arrange" (edit mode) lays the whole mindmap out as a tidy tree, e.g.
-//   for a chapter that was built in the list.
+// - It always shows ONE location and its whole subtree - opened from a
+//   main location's 🗺 button in the list view, or from a pin on the Map
+//   tab, which can be any location (see app.js). The bar at the top goes
+//   back (to the list or the map), or switches to another main location
+//   via a dropdown. The data doesn't change at all: which nodes are shown
+//   is just a filter on parentId. Nodes are only ever placed by hand -
+//   there's deliberately no automatic layout.
+// - A node with NPCs shows how many (👤 2); its panel lists them.
 // - Panning/zoom work by transforming the whole world layer (translate+scale),
 //   node positions (x,y) are always in "world" coordinates and unaffected by zoom.
 // - While dragging, the DOM and lines are updated directly (no full
@@ -54,7 +55,10 @@ const MindmapView = (() => {
   // { onBack(), onSwitch(mainNodeId) } - navigation is owned by app.js
   let callbacks = null;
 
-  // node id -> { div, nameSpan, cached: <node data>, width, height }
+  // location id -> how many NPCs are there (set by render)
+  let npcCounts = new Map();
+
+  // node id -> { div, nameSpan, npcSpan, npcCount, cached: <node data>, width, height }
   const entries = new Map();
   // child node id -> its <line> element (a node has at most one parent line)
   const lineEls = new Map();
@@ -76,7 +80,6 @@ const MindmapView = (() => {
 
     container.querySelector('#mindmap-back-btn').addEventListener('click', () => callbacks.onBack());
     mainSelectEl.addEventListener('change', () => callbacks.onSwitch(mainSelectEl.value));
-    container.querySelector('#mindmap-arrange-btn').addEventListener('click', arrange);
 
     // zoom with the mouse wheel (desktop), around the cursor - just a
     // transform, no per-node work
@@ -215,56 +218,12 @@ const MindmapView = (() => {
     applyTransform();
   }
 
-  // lays the main node's subtree out as a tree, top-down: every leaf gets
-  // its own column, a parent sits centered above its children, one row
-  // per level. The main node keeps its position. One Store mutation.
-  function arrange() {
-    const main = Store.getById(mainNodeId);
-    if (!main) return;
-    const ok = confirm(`Arrange the mindmap for "${main.name}"?\n\nEvery node in it is moved into a tidy tree. Positions you've set by hand are replaced.`);
-    if (!ok) return;
-
-    const COLUMN_W = 240; // wider than a node's max width (220px), so boxes never overlap
-    const ROW_H = 130;
-    const childrenOf = new Map();
-    Store.getAll().forEach(n => {
-      if (!childrenOf.has(n.parentId)) childrenOf.set(n.parentId, []);
-      childrenOf.get(n.parentId).push(n);
-    });
-
-    const positions = {};
-    let nextColumn = 0;
-    // returns the node's x (in columns)
-    function place(node, depth) {
-      const kids = childrenOf.get(node.id) || [];
-      let column;
-      if (kids.length === 0) {
-        column = nextColumn++;
-      } else {
-        const kidColumns = kids.map(k => place(k, depth + 1));
-        column = (kidColumns[0] + kidColumns[kidColumns.length - 1]) / 2;
-      }
-      positions[node.id] = { x: column * COLUMN_W, y: depth * ROW_H };
-      return column;
-    }
-    place(main, 0);
-
-    // keep the main node where it was - but never push anything off the
-    // left/top edge (positions can't be negative)
-    let dx = main.x - positions[main.id].x;
-    const minX = Math.min(...Object.values(positions).map(p => p.x));
-    dx = Math.max(dx, 40 - minX);
-    Object.values(positions).forEach(p => { p.x += dx; p.y += main.y; });
-
-    Store.setPositions(positions);
-    renderedKey = null; // re-center on the new layout
-    render();
-  }
-
-  // "Chapter 1 ▾" dropdown: every main node, to jump between them. Only
-  // rebuilt when a main node was added/renamed/removed or another one is
-  // shown - not on every node drag or notes edit
-  function renderMainSelect(rootNodes) {
+  // "Chapter 1 ▾" dropdown: every main node, to jump between them (plus
+  // the shown location, if it isn't a main one - opened from the map).
+  // Only rebuilt when a main node was added/renamed/removed or another one
+  // is shown - not on every node drag or notes edit
+  function renderMainSelect(rootNodes, shownNode) {
+    if (shownNode && shownNode.parentId) rootNodes = [shownNode, ...rootNodes];
     const key = JSON.stringify([mainNodeId, rootNodes.map(n => [n.id, n.name])]);
     if (key === mainSelectKey) return;
     mainSelectKey = key;
@@ -286,6 +245,10 @@ const MindmapView = (() => {
 
   function render() {
     const allNodes = Store.getAll();
+    npcCounts = new Map();
+    Store.getBoardNodes('npcs').forEach(npc => {
+      if (npc.locationId) npcCounts.set(npc.locationId, (npcCounts.get(npc.locationId) || 0) + 1);
+    });
     const nodeById = new Map(allNodes.map(n => [n.id, n]));
 
     const shownNodes = [];
@@ -321,7 +284,7 @@ const MindmapView = (() => {
     // second pass: create/update/remove connection lines
     shownNodes.forEach(node => syncConnection(node));
 
-    renderMainSelect(childrenOf.get(null) || []);
+    renderMainSelect(childrenOf.get(null) || [], nodeById.get(mainNodeId));
 
     const key = Store.getCurrentCampaignId() + '|' + mainNodeId;
     if (key !== renderedKey) {
@@ -334,6 +297,8 @@ const MindmapView = (() => {
     const entry = { cached: node, positionChanged: true, sizeChanged: true };
     entry.div = buildNodeEl(entry);
     entry.nameSpan = entry.div.querySelector('.mindmap-node-name');
+    entry.npcSpan = entry.div.querySelector('.mindmap-node-npcs');
+    setNpcCount(entry, npcCounts.get(node.id) || 0);
     worldEl.appendChild(entry.div);
     measure(entry);
     entries.set(node.id, entry);
@@ -349,9 +314,11 @@ const MindmapView = (() => {
       entry.div.style.top = node.y + 'px';
     }
 
-    entry.sizeChanged = prev.name !== node.name;
+    const npcCount = npcCounts.get(node.id) || 0;
+    entry.sizeChanged = prev.name !== node.name || npcCount !== entry.npcCount;
     if (entry.sizeChanged) {
       entry.nameSpan.textContent = node.name;
+      setNpcCount(entry, npcCount);
       measure(entry); // text changed -> box size may have changed too
     }
 
@@ -360,6 +327,12 @@ const MindmapView = (() => {
     }
 
     entry.cached = node;
+  }
+
+  function setNpcCount(entry, count) {
+    entry.npcCount = count;
+    entry.npcSpan.textContent = count ? '👤 ' + count : '';
+    entry.npcSpan.hidden = !count;
   }
 
   function removeNodeEntry(id) {
@@ -440,6 +413,11 @@ const MindmapView = (() => {
     nameSpan.textContent = node.name;
     div.appendChild(nameSpan);
 
+    const npcSpan = document.createElement('span');
+    npcSpan.className = 'mindmap-node-npcs';
+    npcSpan.title = 'NPCs here';
+    div.appendChild(npcSpan);
+
     const delBtn = document.createElement('button');
     delBtn.className = 'mindmap-node-del';
     delBtn.title = 'Delete';
@@ -464,7 +442,7 @@ const MindmapView = (() => {
     addBtn.addEventListener('pointerdown', e => e.stopPropagation());
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
-      const child = Store.addNode('New node', entry.cached.id);
+      const child = Store.addNode('New location', entry.cached.id);
       NotesEditor.open(child.id, { isNew: true });
     });
     div.appendChild(addBtn);

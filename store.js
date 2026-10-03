@@ -51,25 +51,32 @@
 //     bold, and any http(s)/www URL is auto-linked - see notes-editor.js
 //     for the renderer. It is NEVER HTML, so it's safe to store/display as-is.
 //   - x/y are only used by the mindmap view (pixel position on its canvas)
-//   - optional "board": "notes" marks a note on the Notes tab (see
-//     notes-board.js) instead of a node of the campaign's list/mindmaps.
-//     Its name is the note's title, notes its description, x/y its place
-//     on the board; parentId is always null. Keeping the notes in the same
-//     list means they go to Drive, backups and Undo like any node, and an
-//     older version of the app keeps them (it just shows them as main
-//     nodes). getAll()/getById() leave board nodes out, so the list and
-//     the mindmaps never see them; getBoardNodes() returns them.
-//   - "board": "locations" is a location on the Locations tab (see
-//     locations.js): name is its title, notes its description, and "note"
-//     is its note. x/y aren't used there.
+//   - the nodes WITHOUT a "board" are the campaign's locations: the tree on
+//     the Locations tab, where every main (root) location can be opened
+//     as a mindmap, and which the map's pins point at
+//   - optional "board" marks a node that isn't a location. Board nodes are
+//     never anyone's parent or child (parentId is always null), and
+//     getAll()/getById() leave them out, so the list and the mindmaps
+//     never see them; getBoardNodes() returns them. Keeping them in the
+//     same list means they go to Drive, backups and Undo like any node.
+//   - "board": "pins" is a pin on the map (the Map tab, see
+//     map-view.js): "locationId" is the location it
+//     stands for ('' = none picked yet), x/y its place on the map in
+//     1/10000ths of the image's width/height (so a replaced picture of the
+//     same map keeps them in place). name is the location's name when
+//     the pin was set (only used for "Deleted ..." messages).
 //   - "board": "npcs" is an NPC on the NPCs tab: name is the NPC's name,
 //     notes the description, "note" its legacy note, and optional
-//     "locationId" the id of its current location. x/y aren't used there.
+//     "locationId" the id of the location it's at. x/y aren't used there.
 //   - "board": "players" is a player on the Players tab (see
 //     player-list.js): name, notes = the note, and "items":
 //     [{ "title": string, "value": number (gp) }, ...], the player's magic
 //     items. (A "gold" field from an earlier version is kept but unused.)
 //     x/y aren't used there.
+//   - "board": "notes" / "locations" / "map" come from an earlier version
+//     (loose notes, locations before they became the tree, and an uploaded
+//     map picture in "image" - the map is a file in the app now). They're
+//     kept, but not shown anywhere.
 //
 // normalizeNodes() repairs incoming nodes defensively (missing
 // fields get sane defaults, a parentId pointing at a non-existent node
@@ -346,8 +353,8 @@ const Store = (() => {
 
   // --- reads ---
 
-  // the campaign's own nodes (the list and the mindmaps) - not the notes
-  // on the Notes tab, see getBoardNodes
+  // the campaign's locations (the list and the mindmaps) - not NPCs,
+  // pins etc., see getBoardNodes
   function getAll() {
     return nodes.filter(n => !n.board).map(n => ({ ...n }));
   }
@@ -357,9 +364,30 @@ const Store = (() => {
     return n ? { ...n } : null;
   }
 
-  // the nodes on a board, e.g. 'notes' (the Notes tab)
+  // the nodes on a board, e.g. 'npcs'
   function getBoardNodes(board) {
     return nodes.filter(n => n.board === board).map(n => ({ ...n }));
+  }
+
+  // every location in list order (each one followed by the ones under
+  // it), with its depth (0 = main location) and path ("Region › City"),
+  // for location pickers (map pins, NPCs) and for showing where an NPC is
+  function getLocationTree() {
+    const childrenOf = new Map();
+    nodes.forEach(n => {
+      if (n.board) return;
+      if (!childrenOf.has(n.parentId)) childrenOf.set(n.parentId, []);
+      childrenOf.get(n.parentId).push(n);
+    });
+    const result = [];
+    (function walk(parentId, depth, path) {
+      (childrenOf.get(parentId) || []).forEach(n => {
+        const nodePath = path ? path + ' › ' + n.name : n.name;
+        result.push({ id: n.id, name: n.name, depth, path: nodePath });
+        walk(n.id, depth + 1, nodePath);
+      });
+    })(null, 0, '');
+    return result;
   }
 
   // is `maybeAncestorId` an ancestor of (or equal to) `id`?
@@ -394,9 +422,9 @@ const Store = (() => {
     return { ...node };
   }
 
-  // the extra text fields a board node can have (locations and NPCs),
+  // the extra text fields a board node can have (NPCs, pins, the map),
   // set through addBoardNode/updateNode
-  const BOARD_TEXT_FIELDS = ['note', 'locationId'];
+  const BOARD_TEXT_FIELDS = ['note', 'locationId', 'image'];
 
   // an amount of gp (an item's value): a finite number, to the copper;
   // anything else is no value (undefined)
@@ -680,7 +708,7 @@ const Store = (() => {
       return id;
     });
 
-    // board nodes (notes on the Notes tab) are never anyone's parent or
+    // board nodes (NPCs, pins, ...) are never anyone's parent or
     // child - and a "board" that isn't a non-empty string doesn't count
     const onBoard = n => typeof n.board === 'string' && n.board !== '';
     const validIds = new Set(ids.filter((_, i) => !onBoard(incoming[i])));
@@ -761,7 +789,7 @@ const Store = (() => {
   load();
 
   return {
-    getAll, getById, getBoardNodes,
+    getAll, getById, getBoardNodes, getLocationTree,
     addNode, addBoardNode, updateNode, deleteNode, restoreNodes, moveNode, moveNodePosition, setPositions,
     subscribe, exportJSON, getUpdatedAt, setCampaignData, addCampaignFromData,
     listCampaigns, getCurrentCampaignId, getCurrentCampaignName, sanitizeFileName,

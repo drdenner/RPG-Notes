@@ -53,7 +53,7 @@ body {
   flex-wrap: wrap;
 }
 
-/* the tabs (Campaign, Players, Notes, Locations, NPCs) - look like the edit/view
+/* the tabs (Map, Locations, NPCs, Players) - look like the edit/view
    switch below, in the title font */
 .app-tabs .mode-btn {
   font-family: Georgia, 'Times New Roman', serif;
@@ -299,7 +299,6 @@ body.view-mode #campaign-new-btn,
 body.view-mode #campaign-rename-btn,
 body.view-mode #campaign-delete-btn,
 body.view-mode #campaign-remove-local-btn,
-body.view-mode #mindmap-arrange-btn,
 body.view-mode #campaign-import-btn {
   display: none !important;
 }
@@ -975,9 +974,9 @@ body.no-campaign #tree-new-root-btn {
   font-style: italic;
 }
 
-/* --- the Players, Notes and Locations tabs --- */
+/* --- the other tabs --- */
 
-/* "No campaigns on this device" belongs to the Campaign tab */
+/* "No campaigns on this device" belongs to the Locations list */
 body.other-tab .no-campaign-msg {
   display: none;
 }
@@ -994,189 +993,7 @@ body.other-tab .no-campaign-msg {
   }
 }
 
-/* --- Notes tab: loose notes as cards on a board (notes-board.js). The
-   board itself looks and moves like the mindmap (.mindmap-canvas) --- */
-
-.board-empty {
-  position: absolute;
-  top: 40%;
-  left: 16px;
-  right: 16px;
-  margin: 0;
-  text-align: center;
-  color: var(--text-dim);
-  font-style: italic;
-  pointer-events: none;
-}
-
-.board-empty[hidden] {
-  display: none;
-}
-
-/* a note: just its title bar when folded in, title + description when
-   folded out (.open) */
-.board-card {
-  position: absolute;
-  width: max-content;
-  min-width: 140px;
-  max-width: 260px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 3px 8px var(--shadow);
-  color: var(--text-main);
-}
-
-.board-card.has-text {
-  border-left: 3px solid var(--accent-gold);
-}
-
-.board-card.open {
-  width: 320px;
-  max-width: none;
-  border-color: var(--accent-gold);
-}
-
-.board-card.dragging-node {
-  box-shadow: 0 6px 18px var(--shadow);
-}
-
-/* tap to fold out/in, drag to move (edit mode) - so it handles touch itself */
-.board-card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  cursor: pointer;
-  user-select: none;
-  touch-action: none;
-}
-
-.board-card-caret {
-  flex-shrink: 0;
-  color: var(--accent-gold);
-  font-size: 0.8rem;
-}
-
-.board-card-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.92rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.board-card-title-input {
-  flex: 1;
-  min-width: 0;
-  padding: 4px 6px;
-  background: var(--bg-deep);
-  color: var(--accent-gold-bright);
-  border: 1px solid var(--border-soft);
-  border-radius: 5px;
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.board-card-title-input:focus,
-.board-card-textarea:focus {
-  outline: none;
-  border-color: var(--accent-gold);
-}
-
-.board-card-edit,
-.board-card-del {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-}
-
-/* what shows when: folded in = title only; folded out = + description and
-   ✎ ✕ (edit mode); editing = title field, text field and Done */
-.board-card-title-input,
-.board-card-body,
-.board-card-textarea,
-.board-card-actions,
-.board-card-edit,
-.board-card-del {
-  display: none;
-}
-
-.board-card.open .board-card-body,
-.board-card.open .board-card-edit,
-.board-card.open .board-card-del {
-  display: block;
-}
-
-.board-card.editing .board-card-title,
-.board-card.editing .board-card-edit,
-.board-card.editing .board-card-text {
-  display: none;
-}
-
-.board-card.editing .board-card-title-input,
-.board-card.editing .board-card-textarea {
-  display: block;
-}
-
-.board-card.editing .board-card-actions {
-  display: flex;
-}
-
-body.view-mode .board-card-edit,
-body.view-mode .board-card-del,
-body.view-mode #board-new-btn,
-body.no-campaign #board-new-btn {
-  display: none !important;
-}
-
-/* a long description scrolls inside the card */
-.board-card-body {
-  max-height: 55vh;
-  overflow-y: auto;
-  padding: 0 14px 12px;
-  border-top: 1px solid var(--border-soft);
-  touch-action: pan-y;
-  cursor: auto;
-}
-
-.board-card-text {
-  margin: 10px 0 0;
-  font-size: 0.9rem;
-  overflow-wrap: anywhere;
-}
-
-.board-card-text:empty::before {
-  content: 'No description.';
-}
-
-.board-card-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  margin-top: 10px;
-  padding: 8px 10px;
-  background: var(--bg-deep);
-  color: var(--text-main);
-  border: 1px solid var(--border-soft);
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  resize: vertical;
-}
-
-.board-card-actions {
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
-.board-card-actions .btn {
-  padding: 7px 16px;
-  font-size: 0.85rem;
-}
-
-/* --- Locations tab: locations with linked NPCs (locations.js) --- */
+/* --- NPCs and Players tabs (npc-list.js, player-list.js) --- */
 
 /* like the list: the float button stays put while the list scrolls */
 .npc-wrap {
@@ -1213,14 +1030,6 @@ body.no-campaign #board-new-btn {
 
 .npc-group {
   margin-top: 14px;
-}
-
-.location-group {
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.location-group.open {
-  background: rgba(201, 162, 91, 0.04);
 }
 
 .npc-group-head {
@@ -1280,37 +1089,6 @@ body.no-campaign #board-new-btn {
   list-style: none;
   margin: 0;
   padding: 0 0 0 14px;
-}
-
-.location-body {
-  padding: 0 12px 12px 32px;
-}
-
-.location-npc-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
-}
-
-.location-npc-heading .npc-label {
-  margin: 0;
-}
-
-.location-no-npcs {
-  padding: 8px 0;
-  color: var(--text-dim);
-  font-size: 0.88rem;
-}
-
-.location-npc {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.location-npc .npc-name {
-  display: block;
-  margin-bottom: 3px;
 }
 
 .npc {
@@ -1429,9 +1207,7 @@ textarea.npc-input {
 body.view-mode .npc-edit,
 body.view-mode .npc-del,
 body.view-mode .npc-group-add,
-body.view-mode #location-new-btn,
 body.view-mode #npc-new-btn,
-body.no-campaign #location-new-btn,
 body.no-campaign #npc-new-btn {
   display: none !important;
 }
@@ -1671,4 +1447,278 @@ body.view-mode .player-del,
 body.view-mode #player-new-btn,
 body.no-campaign #player-new-btn {
   display: none !important;
+}
+
+/* --- Locations list: the NPCs under a location's row (tree-view.js) --- */
+
+.tree-npcs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 0 8px 6px 64px; /* lines up with the name, past the grip and toggle */
+}
+
+.tree-npcs[hidden] {
+  display: none;
+}
+
+.tree-npc {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 3px 10px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tree-npc:hover {
+  border-color: var(--accent-gold);
+  color: var(--text-main);
+}
+
+.tree-npc-btn {
+  width: auto;
+  padding: 0 6px;
+  font-size: 0.8rem;
+}
+
+/* "👤 2" in a mindmap node: how many NPCs are there */
+.mindmap-node-npcs {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.mindmap-node-npcs[hidden] {
+  display: none;
+}
+
+/* --- the NPCs in a location's panel (notes-editor.js) --- */
+
+.notes-npcs {
+  flex-shrink: 0;
+  max-height: 35vh;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.notes-npcs-label {
+  margin: 12px 0 4px;
+}
+
+.notes-npc-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.notes-npc {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.notes-npc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notes-npc-head strong {
+  color: var(--accent-gold-bright);
+  font-weight: 600;
+}
+
+.notes-npc-head .btn-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.notes-npc-text {
+  margin-top: 2px;
+  color: var(--text-main);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.notes-npc-text i {
+  color: var(--text-dim);
+}
+
+.notes-npc-text a {
+  color: var(--accent-gold-bright);
+}
+
+.notes-npc-empty {
+  padding: 6px 0;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  font-style: italic;
+}
+
+.notes-npc-add[hidden] {
+  display: none;
+}
+
+/* --- Map tab (map-view.js): the picture pans and zooms like the
+   mindmap; the pins lie over it, outside the zoom --- */
+
+.map-canvas {
+  background-image: none;
+}
+
+.map-image {
+  display: block;
+  max-width: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.map-image[hidden] {
+  display: none;
+}
+
+/* covers the canvas, but only the pins themselves catch taps */
+.map-pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#map-bar[hidden],
+#map-pin-btn[hidden] {
+  display: none;
+}
+
+.board-empty {
+  position: absolute;
+  top: 40%;
+  left: 16px;
+  right: 16px;
+  margin: 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-style: italic;
+  pointer-events: none;
+}
+
+.board-empty[hidden] {
+  display: none;
+}
+
+/* a pin: zero-size at its spot on the map; the dot is centered on that
+   spot, the label sits to the right of it */
+.map-pin {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: auto;
+}
+
+.map-pin-dot {
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-red-bright);
+  border: 3px solid var(--accent-gold-bright);
+  box-shadow: 0 2px 6px var(--shadow);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.map-pin.editing .map-pin-dot {
+  background: var(--accent-gold);
+  border-color: #fff;
+  cursor: grab;
+  /* a bigger target to drag on a tablet */
+  left: -15px;
+  top: -15px;
+  width: 30px;
+  height: 30px;
+}
+
+.map-pin.dragging .map-pin-dot {
+  cursor: grabbing;
+}
+
+.map-pin.missing .map-pin-dot {
+  background: var(--bg-elevated);
+}
+
+.map-pin-box {
+  position: absolute;
+  left: 16px;
+  top: -17px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--shadow);
+  padding: 2px;
+}
+
+.map-pin.editing .map-pin-box {
+  left: 20px;
+  top: -19px;
+  border-color: var(--accent-gold);
+}
+
+.map-pin-label {
+  background: none;
+  border: none;
+  color: var(--accent-gold-bright);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.9rem;
+  padding: 5px 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.map-pin-label:hover {
+  text-decoration: underline;
+}
+
+.map-pin-btn {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  min-width: 30px;
+  height: 30px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.map-pin-btn:hover {
+  background: var(--bg-elevated-hover);
+  color: var(--text-main);
+}
+
+.map-pin-del:hover {
+  color: var(--accent-red-bright);
+}
+
+.map-pin-select {
+  max-width: 220px;
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 0.85rem;
 }

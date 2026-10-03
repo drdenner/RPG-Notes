@@ -1,7 +1,7 @@
-// The NPCs tab: a simple directory with an optional location for each NPC.
+// The NPCs tab: a simple directory with an optional location for each NPC
+// (any location from the Locations tab, shown with its path).
 const NpcList = (() => {
   const NPC_BOARD = 'npcs';
-  const LOCATION_BOARD = 'locations';
 
   let listEl, searchEl, emptyEl, newBtn;
   let editing = null;
@@ -32,8 +32,7 @@ const NpcList = (() => {
 
   function render() {
     if (editing) return;
-    const locations = Store.getBoardNodes(LOCATION_BOARD);
-    const locationNames = new Map(locations.map(location => [location.id, location.name]));
+    const locationNames = new Map(Store.getLocationTree().map(location => [location.id, location.path]));
     const npcs = Store.getBoardNodes(NPC_BOARD);
     const query = searchEl.value.trim().toLowerCase();
     const shown = npcs
@@ -109,10 +108,9 @@ const NpcList = (() => {
     const traveling = el('option', '', 'Traveling / no fixed location');
     traveling.value = '';
     location.appendChild(traveling);
-    Store.getBoardNodes(LOCATION_BOARD)
-      .sort((a, b) => a.name.localeCompare(b.name))
+    Store.getLocationTree()
       .forEach(place => {
-        const option = el('option', '', place.name);
+        const option = el('option', '', '   '.repeat(place.depth) + place.name);
         option.value = place.id;
         location.appendChild(option);
       });

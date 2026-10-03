@@ -1,7 +1,13 @@
 // notes-editor.js
-// The single panel for a node: renaming it and writing its notes both
-// happen here. Both views open it by clicking/tapping the node itself -
-// there's no separate rename or notes button anymore.
+// The single panel for a location: renaming it and writing its notes both
+// happen here. The list and the mindmap open it by clicking/tapping the
+// location itself - there's no separate rename or notes button.
+//
+// Below the notes, the panel lists the NPCs at the location (name and
+// description). In edit mode, NPCs are added there - an existing one
+// (moved here from wherever it was) or a new one - and removed again
+// (✕, which leaves the NPC without a location; it's deleted on the NPCs
+// tab). NPC changes are saved right away, not with the Save button.
 //
 // Notes are plain text with a tiny markdown-like syntax: **bold text**
 // renders as bold, and any http(s)/www URL typed in the text is
@@ -31,6 +37,7 @@ const NotesEditor = (() => {
 
   let overlayEl, panelEl, titleInputEl, hintEl, textareaEl, previewLabelEl, previewEl, saveBtn, closeBtn;
   let unsavedBarEl, unsavedSaveBtn;
+  let npcSectionEl, npcListEl, npcAddEl;
   let currentId = null;
   let savedName = '';  // what the fields held when opened / last saved,
   let savedNotes = ''; // used to detect unsaved changes
@@ -121,11 +128,24 @@ const NotesEditor = (() => {
     previewEl = document.createElement('div');
     previewEl.className = 'notes-preview';
 
-    panelEl.append(header, unsavedBarEl, hintEl, textareaEl, previewLabelEl, previewEl);
+    npcSectionEl = document.createElement('div');
+    npcSectionEl.className = 'notes-npcs';
+    const npcLabel = document.createElement('div');
+    npcLabel.className = 'notes-preview-label notes-npcs-label';
+    npcLabel.textContent = 'NPCs here';
+    npcListEl = document.createElement('ul');
+    npcListEl.className = 'notes-npc-list';
+    npcAddEl = document.createElement('select');
+    npcAddEl.className = 'npc-input notes-npc-add';
+    npcAddEl.addEventListener('change', addNpc);
+    npcSectionEl.append(npcLabel, npcListEl, npcAddEl);
+
+    panelEl.append(header, unsavedBarEl, hintEl, textareaEl, previewLabelEl, previewEl, npcSectionEl);
     overlayEl.appendChild(panelEl);
     document.body.appendChild(overlayEl);
 
     AppMode.subscribe(applyMode);
+    Store.subscribe(() => { if (currentId) renderNpcs(); });
   }
 
   function applyMode() {
@@ -137,6 +157,76 @@ const NotesEditor = (() => {
     saveBtn.hidden = !editable;
     previewEl.classList.toggle('notes-preview-full', !editable);
     updatePreview();
+    renderNpcs();
+  }
+
+  // --- the NPCs at this location ---
+
+  const NEW_NPC = '__new__';
+
+  function renderNpcs() {
+    if (!currentId) return;
+    const editable = AppMode.isEditMode();
+    const npcs = Store.getBoardNodes('npcs').sort((a, b) => a.name.localeCompare(b.name));
+    const here = npcs.filter(npc => npc.locationId === currentId);
+    const paths = new Map(Store.getLocationTree().map(l => [l.id, l.path]));
+
+    npcListEl.innerHTML = '';
+    if (!here.length) {
+      const empty = document.createElement('li');
+      empty.className = 'notes-npc-empty';
+      empty.textContent = 'No NPCs here.';
+      npcListEl.appendChild(empty);
+    }
+    here.forEach(npc => {
+      const item = document.createElement('li');
+      item.className = 'notes-npc';
+      const head = document.createElement('div');
+      head.className = 'notes-npc-head';
+      const name = document.createElement('strong');
+      name.textContent = npc.name;
+      head.appendChild(name);
+      if (editable) {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn-icon btn-danger';
+        removeBtn.textContent = '✕';
+        removeBtn.title = 'Remove from this location (the NPC is kept)';
+        removeBtn.addEventListener('click', () => Store.updateNode(npc.id, { locationId: '' }));
+        head.appendChild(removeBtn);
+      }
+      const description = document.createElement('div');
+      description.className = 'notes-npc-text';
+      description.innerHTML = npc.notes ? renderNotes(npc.notes) : '<i>No description.</i>';
+      item.append(head, description);
+      npcListEl.appendChild(item);
+    });
+
+    npcAddEl.hidden = !editable;
+    npcAddEl.innerHTML = '';
+    const option = (value, text) => {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = text;
+      return o;
+    };
+    npcAddEl.append(option('', '👤 Add an NPC here…'), option(NEW_NPC, '+ New NPC…'));
+    npcs.filter(npc => npc.locationId !== currentId).forEach(npc => {
+      const where = paths.get(npc.locationId);
+      npcAddEl.appendChild(option(npc.id, npc.name + (where ? ` (now: ${where})` : ' (traveling)')));
+    });
+    npcAddEl.value = '';
+  }
+
+  function addNpc() {
+    const value = npcAddEl.value;
+    npcAddEl.value = '';
+    if (!value || !currentId || !AppMode.isEditMode()) return;
+    if (value === NEW_NPC) {
+      const name = (prompt('Name of the new NPC:') || '').trim();
+      if (name) Store.addBoardNode('npcs', name, 0, 0, { locationId: currentId });
+    } else {
+      Store.updateNode(value, { locationId: currentId });
+    }
   }
 
   function updatePreview() {
@@ -144,15 +234,17 @@ const NotesEditor = (() => {
     previewEl.innerHTML = raw ? renderNotes(textareaEl.value) : '';
   }
 
-  function open(nodeId, { isNew = false } = {}) {
+  // showNpcs: scroll to the NPCs (the list's 👤+ and NPC names)
+  function open(nodeId, { isNew = false, showNpcs = false } = {}) {
     build();
-    currentId = nodeId;
     const node = Store.getById(nodeId);
     if (!node) return;
+    currentId = nodeId;
     titleInputEl.value = savedName = node.name;
     textareaEl.value = savedNotes = node.notes || '';
     applyMode();
     overlayEl.classList.add('open');
+    if (showNpcs) npcSectionEl.scrollIntoView({ block: 'nearest' });
     if (isNew && AppMode.isEditMode()) {
       titleInputEl.focus();
       titleInputEl.select();
@@ -236,6 +328,6 @@ const NotesEditor = (() => {
     return html;
   }
 
-  // renderNotes is also used by the Notes tab (notes-board.js)
+  // renderNotes is also used by the NPCs and Players tabs
   return { open, renderNotes };
 })();

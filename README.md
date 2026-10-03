@@ -1,16 +1,53 @@
 # RPG Notes
 
-A small note-taking app for tabletop RPG campaigns. Notes are organized as a
-tree of nodes (chapters, NPCs, places, ...) shown as a nested **List**, where
-each **main node** (a top-level node, e.g. a chapter) can be opened as a
-freely arranged **Mindmap**. Each node has a name and
-plain-text notes, where `**bold**` renders bold and URLs become links.
+A small note-taking app for tabletop RPG campaigns, built around the
+campaign's **locations**: a map with a pin for each place, the locations
+as a nested list (regions, the cities in them, the taverns in those, ...),
+a freely arranged **mindmap** per location, and the **NPCs** at each
+location. Locations and NPCs have plain-text notes, where `**bold**`
+renders bold and URLs become links.
 
-- Tabs at the left of the top bar: **Campaign** (the list and the
-  mindmaps described below), **Players**, **Notes**, **Locations** and **NPCs** (see
-  below). The back button returns
-  from the other tabs to the campaign (to the list or the mindmap that was
-  open), and the app remembers which tab was open
+- Tabs at the left of the top bar: **Map**, **Locations**, **NPCs** and
+  **Players** (see below). The app remembers which tab was open, and a
+  reload stays on it
+- **Map** tab: the map picture, with pins on it. The picture is a fixed
+  file in the app, `maps/map.jpg` (see "Changing the map" below); the pins
+  belong to each campaign. In edit mode, **+ Pin** adds a pin in the
+  middle of the screen, with a
+  dropdown of every location (indented like the list). Picking one
+  **locks** the pin: it then shows the location's name, can't be moved or
+  changed by accident, and tapping it opens that location's mindmap. **🔒**
+  unlocks it (edit mode): then it can be dragged by its dot, given another
+  location (which locks it again), locked again as it was (**🔓**), or
+  deleted (**✕**, with Undo). A pin whose location was deleted is unlocked
+  and shown without a name; in view mode it's hidden. The map pans and
+  zooms like the mindmap, and the pins keep their size at any zoom
+- **Locations** tab: the locations as a nested list. **+ New location**
+  adds a main location, **+** on a row adds a location inside it, **✕**
+  deletes it with everything inside it (with Undo). The NPCs at a location
+  are shown under its row; **👤+** (or tapping an NPC's name) opens the
+  location's panel at its NPCs. **Search** finds locations by name, notes
+  and the names of their NPCs (with their parents), and which locations
+  are collapsed is remembered per campaign
+- A location's **panel** (tap its name, in the list or the mindmap): its
+  name and notes (saved with **Save**), and the **NPCs here**, each with
+  its description. In edit mode, **👤 Add an NPC here…** moves an existing
+  NPC here (it shows where each one is now) or creates a new one (**+ New
+  NPC…**), and **✕** next to an NPC removes it from the location (the NPC
+  is kept, without a location). NPC changes are saved right away
+- **🗺 Mindmap** next to a main location opens its mindmap: that location
+  and everything inside it, with lines, where tapping a node opens its
+  panel and a node with NPCs shows how many (👤 2). A pin on the map opens
+  the mindmap of its location (which can be any location, not just a main
+  one). **← Back** returns to the list or the map, whichever it was opened
+  from (so does the browser's/tablet's back button), and the dropdown next
+  to it switches to another main location. It zooms out to fit when
+  opened. Nodes are only placed by hand: there's no automatic layout.
+  Only the open location is rendered, which keeps big campaigns fast
+- **NPCs** tab: a simple list of NPC names, descriptions and locations
+  (shown with their path, e.g. "Sword Coast › Waterdeep"). An NPC can be
+  at any location, or **Traveling** (no location). In edit mode, **+ New
+  NPC**, **✎** and **✕** add, edit or delete NPCs.
 - **Players** tab: each player's magic items and wealth, e.g. to hand out
   treasure fairly. A player has a name, a list of magic items (a title and
   a value in gp each) and a note; their total is the items' values added
@@ -21,52 +58,22 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   (items are added with **+ Add item** and removed with their **✕**; saved
   with **Done** or by tapping outside it), and **✕** deletes a player (with
   Undo)
-- **Notes** tab: loose notes for the campaign, each a title and a
-  description, as cards on a board that pans and zooms like the mindmap,
-  without lines between them. Tapping a note's title folds it out right
-  there (and back in), so several can be open at once; which ones are
-  open is remembered on the device. In edit mode, **+ New note** adds one,
-  **✎** on an open note edits its title and description in the card (saved
-  with **Done** or by tapping outside it), **✕** deletes it (with Undo), and
-  dragging a card by its title bar moves it. The description uses the same
-  `**bold**` and links as a node's notes
-- **Locations** tab: each location has a title, description and note.
-  Opening one shows the NPCs currently assigned there, with their
-  descriptions. **No location** stays at the top and shows NPCs without a
-  current location. This is a read-only overview of NPCs; in edit mode,
-  **+ New location**, **✎** and **✕** manage locations. Deleting a location
-  keeps its NPCs and leaves them without a location. **Search** filters
-  locations and their NPCs.
-- **NPCs** tab: a simple list of NPC names, descriptions and locations.
-  NPCs can be assigned to a location or marked as **Traveling**. In edit
-  mode, **+ New NPC**, **✎** and **✕** add, edit or delete NPCs.
 - Multiple independent campaigns, one active at a time
 - **Edit / View** switch in the top bar (the highlighted half is the current
   mode). View mode locks everything, for use during a session
 - Works with mouse, pen and touch, so it's usable on a tablet. Opening a
-  node to read it doesn't bring up the on-screen keyboard; a new node opens
-  with its placeholder name selected, so you can just type
-- The List is the start page. **Search** above it filters to nodes whose
-  name or notes match (with their parents), and which nodes are collapsed is
-  remembered per campaign
-- **🗺 Mindmap** next to a main node opens its mindmap: that node and
-  everything under it, with lines, where tapping a node opens its notes.
-  **← List** goes back, the dropdown next to it switches to another main
-  node, and **Arrange** (edit mode) lays the whole mindmap out as a tidy
-  tree. It zooms out to fit when opened. The browser's/tablet's back button
-  also returns to the list, and the app remembers an open mindmap, so
-  reloading or reopening the app lands on it again. Only the open main node
-  is rendered, which keeps big campaigns fast
-- New child nodes are placed on a free spot below their parent, so they
-  don't pile up in the mindmap
-- Move a node to a new parent by dragging its ⠿ grip in the List view (it
-  gets a free spot under its new parent, and its children come along); in
-  the Mindmap, dragging a node only changes its position
-- In the Mindmap, one finger on empty space pans; two fingers zoom around
-  the point between them and pan along (the mouse wheel zooms around the
-  cursor)
-- Deleting a node shows **Undo** for a few seconds (it and everything under
-  it come back)
+  location to read it doesn't bring up the on-screen keyboard; a new
+  location opens with its placeholder name selected, so you can just type
+- New locations are placed on a free spot below their parent in the
+  mindmap, so they don't pile up
+- Move a location to a new parent by dragging its ⠿ grip in the list (it
+  gets a free spot under its new parent, and everything inside it comes
+  along); in the mindmap, dragging a node only changes its position
+- In the mindmap and on the map, one finger on empty space pans; two
+  fingers zoom around the point between them and pan along (the mouse
+  wheel zooms around the cursor)
+- Deleting a location shows **Undo** for a few seconds (it and everything
+  inside it come back, and NPCs and pins that pointed at it find it again)
 - Everything is saved locally in the browser (`localStorage`). With the app
   open in several tabs, a change in one tab shows up in the others instead
   of being overwritten
@@ -82,6 +89,19 @@ plain-text notes, where `**bold**` renders bold and URLs become links.
   there are changes Drive doesn't have and can't get right now (offline,
   sign-in expired, disconnected). Right after an edit it says **Saving to
   Drive…**, since edits are uploaded about 10 seconds later
+
+### Changing the map
+
+The map is `maps/map.jpg` (a placeholder until replaced). To use your own
+map, replace that file (any size; a JPEG keeps it small) and bump its
+`?v=N` in `index.html` (`<img id="map-image" src="maps/map.jpg?v=1">`),
+then publish as usual. Because `index.html` links to it, the offline copy
+(`sw.js`) saves it like the rest of the app, so it works without internet,
+and it isn't stored in `localStorage`, so it doesn't use any of the
+browser's ~5 MB for notes. Every campaign and device shows the same map.
+Pins are stored relative to the picture's size, so a sharper or
+differently sized picture of the same map keeps them in place. (To use
+another file name or format, change the `src` there.)
 
 It's plain HTML, CSS and vanilla JavaScript: no build step, no dependencies
 (apart from Google's sign-in library, loaded only for Drive sync).
@@ -253,31 +273,37 @@ authoritative description is at the top of `store.js`.
 - Children are never stored on a node. They're derived from `parentId`.
 - `notes` is plain text, never HTML. `**bold**` and URLs are only formatted
   when displayed.
-- `x`/`y` are the node's position in the mindmap. The mindmap shows one
-  root node's subtree at a time, so positions only matter within that.
 - Loading a file repairs rather than rejects: missing fields get defaults, a
   `parentId` pointing at a missing node makes it a root, parent cycles are
   broken, duplicated ids get a fresh id. Unknown extra fields on a node are
   preserved.
-- A node with `"board": "notes"` is a note on the **Notes** tab, not part
-  of the list/mindmaps: `name` is its title, `notes` its description, `x`/`y`
-  its place on the board, and `parentId` is always `null` (loading a file
-  makes sure of that, and a `board` that isn't a non-empty string is
-  dropped). They're in the same `nodes` array so Drive sync, backups and
-  Undo handle them like any node. An older version of the app keeps them
-  when it saves, but shows them as main nodes in the list.
-- `"board": "locations"` is a location on the **Locations** tab: `name` is
-  its title, `notes` its description, and `note` its note. `x`/`y` aren't
-  used.
-- `"board": "npcs"` is an NPC on the **Locations** tab: `name`, `notes` =
-  description, `note`, and `locationId` for the location it belongs to.
-  `x`/`y` aren't used.
+- A node without a `board` is a **location** (the Locations tab's list and
+  the mindmaps). `x`/`y` are its position in the mindmap; the mindmap
+  shows one location's subtree at a time, so positions only matter within
+  that.
+- A node with a `board` isn't a location, and is never anyone's parent or
+  child: its `parentId` is always `null` (loading a file makes sure of
+  that, and a `board` that isn't a non-empty string is dropped). They're
+  in the same `nodes` array so Drive sync, backups and Undo handle them
+  like any node.
+- `"board": "pins"` is a pin on the map: `locationId` is the id of the
+  location it stands for (`""` = none picked yet), and `x`/`y` its place
+  on the picture in 1/10000ths of its width/height (0-10000), so a
+  replaced picture of the same map keeps the pins in place. `name` is the
+  location's name when the pin was set (only used for "Deleted …").
+- `"board": "npcs"` is an NPC: `name`, `notes` = description, `note` (from
+  an earlier version, not shown), and `locationId`, the id of the location
+  it's at (`""` or missing = traveling). `x`/`y` aren't used.
 - `"board": "players"` is a player on the **Players** tab: `name`, `notes`
   = the note, and `items`, a list of `{ "title": string, "value": number }`
   (gp). Loading a file drops an `items` that isn't a list, leaves out items
   without a title, and counts an item's missing/invalid value as 0. (A
   `gold` field from an earlier version is kept, but not used.)
   Amounts are kept to the copper (2 decimals).
+- `"board": "notes"` (loose notes), `"board": "locations"` (locations
+  before they became the list) and `"board": "map"` (an uploaded map
+  picture in `image`) come from earlier versions. They're kept, but not
+  shown anywhere.
 
 ### Local storage keys
 
@@ -288,13 +314,10 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-data-<campaignId>` | That campaign's `nodes` array |
 | `rpg-notes-updated-<campaignId>` | When that campaign last changed (ISO timestamp) |
 | `rpg-notes-edit-mode` | `"true"` / `"false"` |
-| `rpg-notes-collapsed-<campaignId>` | Ids of the nodes collapsed in the List |
+| `rpg-notes-collapsed-<campaignId>` | Ids of the locations collapsed in the list |
 | `rpg-notes-drive-connected` | Set while Drive is connected, so the app reconnects on the next visit |
 | `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version. A campaign whose current `updatedAt` differs has changes Drive doesn't have |
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
-| `rpg-notes-open-mindmap` | Id of the main node whose mindmap is open (removed when back on the list; kept while another tab is open) |
-| `rpg-notes-open-tab` | `players`, `notes` or `locations` while that tab is open (removed on the Campaign tab) |
-| `rpg-notes-board-open-<campaignId>` | Ids of the notes folded out on that campaign's Notes tab |
-| `rpg-notes-locations-open-<campaignId>` | Ids of the locations folded out on that campaign's Locations tab |
-| `rpg-notes-locations-npc-open-<campaignId>` | Ids of the NPCs folded out on that campaign's Locations tab |
+| `rpg-notes-open-tab` | The open tab: `map`, `locations`, `npcs` or `players` |
+| `rpg-notes-open-mindmap` | `{ id, from }` while a location's mindmap is open: the location, and the tab it was opened from (`map` or `locations`) |
 | `rpg-notes-player-open-<campaignId>` | Ids of the players folded out on that campaign's Players tab |
