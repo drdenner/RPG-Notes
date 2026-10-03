@@ -20,8 +20,13 @@ renders bold and URLs become links.
   unlocks it (edit mode): then it can be dragged by its dot, given another
   location (which locks it again), locked again as it was (**🔓**), or
   deleted (**✕**, with Undo). A pin whose location was deleted is unlocked
-  and shown without a name; in view mode it's hidden. The map pans and
-  zooms like the mindmap, and the pins keep their size at any zoom
+  and shown without a name; in view mode it's hidden. A pin is a small
+  dot, so the names don't cover the map: tapping the dot shows its name
+  (and 🔒 in edit mode), tapping the name opens the location's mindmap,
+  and tapping the dot again or an empty spot on the map hides the name. **Show names** / **Hide names** in the bar shows every
+  pin's name (in view mode too), and is
+  remembered on the device. The map pans and zooms like the mindmap, and
+  the pins keep their size at any zoom
 - **Locations** tab: the locations as a nested list. **+ New location**
   adds a main location, **+** on a row adds a location inside it, **✕**
   deletes it with everything inside it (with Undo). The NPCs at a location
@@ -319,5 +324,6 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-drive-saved` | `{ campaignId: { at, version } }`: when each campaign last reached Drive, and which version. A campaign whose current `updatedAt` differs has changes Drive doesn't have |
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
 | `rpg-notes-open-tab` | The open tab: `map`, `locations`, `npcs` or `players` |
+| `rpg-notes-map-labels` | `"true"` while the Map tab shows every pin's name |
 | `rpg-notes-open-mindmap` | `{ id, from }` while a location's mindmap is open: the location, and the tab it was opened from (`map` or `locations`) |
 | `rpg-notes-player-open-<campaignId>` | Ids of the players folded out on that campaign's Players tab |

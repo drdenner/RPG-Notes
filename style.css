@@ -1625,13 +1625,13 @@ body.no-campaign #player-new-btn {
 
 .map-pin-dot {
   position: absolute;
-  left: -11px;
-  top: -11px;
-  width: 22px;
-  height: 22px;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--accent-red-bright);
-  border: 3px solid var(--accent-gold-bright);
+  border: 2px solid var(--accent-gold-bright);
   box-shadow: 0 2px 6px var(--shadow);
   cursor: pointer;
   touch-action: none;
@@ -1641,11 +1641,19 @@ body.no-campaign #player-new-btn {
   background: var(--accent-gold);
   border-color: #fff;
   cursor: grab;
-  /* a bigger target to drag on a tablet */
-  left: -15px;
-  top: -15px;
-  width: 30px;
-  height: 30px;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+}
+
+/* the dot is small, but easy to hit with a finger: an invisible, bigger
+   target around it */
+.map-pin-dot::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
 }
 
 .map-pin.dragging .map-pin-dot {
@@ -1656,11 +1664,13 @@ body.no-campaign #player-new-btn {
   background: var(--bg-elevated);
 }
 
+/* the name (and 🔒) only once the dot is tapped (.open), or with "Show names";
+   an unlocked pin always shows its controls */
 .map-pin-box {
   position: absolute;
-  left: 16px;
+  left: 12px;
   top: -17px;
-  display: flex;
+  display: none;
   align-items: center;
   gap: 2px;
   white-space: nowrap;
@@ -1671,8 +1681,18 @@ body.no-campaign #player-new-btn {
   padding: 2px;
 }
 
+.map-pin.open .map-pin-box,
+.map-pins.show-labels .map-pin-box,
 .map-pin.editing .map-pin-box {
-  left: 20px;
+  display: flex;
+}
+
+.map-pin.open {
+  z-index: 2;
+}
+
+.map-pin.editing .map-pin-box {
+  left: 14px;
   top: -19px;
   border-color: var(--accent-gold);
 }

@@ -22,13 +22,21 @@
 //   wheel zooms around the cursor. The pins aren't scaled with the
 //   picture: they're laid over it (outside the zoom transform) and only
 //   their positions follow it, so they stay readable at any zoom.
+// - A pin is just a dot, so the names don't cover the map: tapping the
+//   dot shows its name (and 🔒 in edit mode), tapping the name opens the
+//   location's mindmap, and tapping the dot again - or an empty spot on
+//   the map - hides the name again. "Show names" in the bar shows every
+//   name (in view mode too), and is remembered on the device. An unlocked
+//   pin always shows its controls.
 
 const MapView = (() => {
   const PIN_BOARD = 'pins';
   const SCALE = 10000; // pin x/y units per picture width/height
   const TOP = 64; // room for the bar at the top
+  const LABELS_KEY = 'rpg-notes-map-labels'; // "true" while every pin's name is shown
 
-  let canvasEl, worldEl, imgEl, pinsEl, emptyEl, barEl, pinBtn;
+  let canvasEl, worldEl, imgEl, pinsEl, emptyEl, barEl, pinBtn, labelsBtn;
+  let showLabels = false;
   let callbacks = null;
   let zoom = 1;
   let panX = 0;
@@ -39,6 +47,7 @@ const MapView = (() => {
   let imageFailed = false;
   let fitted = false; // fitted to the screen once; after that, tab switches keep where you were
   const unlocked = new Set(); // ids of pins unlocked for editing
+  const openLabels = new Set(); // ids of pins whose name was tapped open
 
   const activePointers = new Map();
   let panPointerId = null;
@@ -56,6 +65,13 @@ const MapView = (() => {
     pinBtn = container.querySelector('#map-pin-btn');
 
     pinBtn.addEventListener('click', addPin);
+    labelsBtn = container.querySelector('#map-labels-btn');
+    try { showLabels = localStorage.getItem(LABELS_KEY) === 'true'; } catch (e) { /* not remembered */ }
+    labelsBtn.addEventListener('click', () => {
+      showLabels = !showLabels;
+      try { localStorage.setItem(LABELS_KEY, String(showLabels)); } catch (e) { /* not remembered */ }
+      render();
+    });
 
     // the picture starts loading with the page, so it may be done already
     const onLoad = () => {
@@ -103,7 +119,11 @@ const MapView = (() => {
 
   function render() {
     const campaignId = Store.getCurrentCampaignId();
-    barEl.hidden = !campaignId || !imgW || !AppMode.isEditMode();
+    barEl.hidden = !campaignId || !imgW;
+    pinBtn.hidden = !AppMode.isEditMode();
+    labelsBtn.textContent = showLabels ? 'Hide names' : 'Show names';
+    labelsBtn.setAttribute('aria-pressed', String(showLabels));
+    pinsEl.classList.toggle('show-labels', showLabels);
     emptyEl.hidden = !imageFailed;
     emptyEl.textContent = 'The map picture (maps/map.jpg) could not be loaded.';
     renderPins();
@@ -146,7 +166,8 @@ const MapView = (() => {
       const location = byId.get(pin.locationId);
       if (!edit && !location) return; // nothing to open
       const editing = edit && (!location || unlocked.has(pin.id));
-      const pinEl = el('div', 'map-pin' + (editing ? ' editing' : '') + (location ? '' : ' missing'));
+      const pinEl = el('div', 'map-pin' + (editing ? ' editing' : '') + (location ? '' : ' missing') +
+        (openLabels.has(pin.id) ? ' open' : ''));
       pinEl._pin = pin;
       pinEl.addEventListener('pointerdown', e => e.stopPropagation()); // no panning from a pin
 
@@ -159,7 +180,11 @@ const MapView = (() => {
         const label = el('button', 'map-pin-label', location.name);
         label.title = location.path;
         label.addEventListener('click', () => callbacks.onOpenLocation(location.id));
-        dot.addEventListener('click', () => callbacks.onOpenLocation(location.id));
+        dot.addEventListener('click', () => {
+          if (openLabels.has(pin.id)) openLabels.delete(pin.id);
+          else openLabels.add(pin.id);
+          pinEl.classList.toggle('open', openLabels.has(pin.id));
+        });
         box.appendChild(label);
         if (edit) {
           const unlockBtn = el('button', 'map-pin-btn', '🔒');
@@ -307,6 +332,12 @@ const MapView = (() => {
   }
 
   function onCanvasPointerUp(e) {
+    // a tap (no panning) on an empty spot hides the names tapped open
+    if (panPointerId === e.pointerId && e.type === 'pointerup' &&
+        Math.abs(e.clientX - panStart.x) < 5 && Math.abs(e.clientY - panStart.y) < 5 && openLabels.size) {
+      openLabels.clear();
+      [...pinsEl.children].forEach(pinEl => pinEl.classList.remove('open'));
+    }
     activePointers.delete(e.pointerId);
     pinchStart = null;
     if (activePointers.size === 0) {
