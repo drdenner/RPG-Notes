@@ -1594,7 +1594,9 @@ body.no-campaign #player-new-btn {
 }
 
 #map-bar[hidden],
-#map-pin-btn[hidden] {
+#map-pin-btn[hidden],
+#map-labels-btn[hidden],
+.map-pins[hidden] {
   display: none;
 }
 

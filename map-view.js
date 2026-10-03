@@ -28,15 +28,19 @@
 //   the map - hides the name again. "Show names" in the bar shows every
 //   name (in view mode too), and is remembered on the device. An unlocked
 //   pin always shows its controls.
+// - "Hide pins" hides every pin, to see the bare map (remembered on the
+//   device too); "+ Pin" shows them again.
 
 const MapView = (() => {
   const PIN_BOARD = 'pins';
   const SCALE = 10000; // pin x/y units per picture width/height
   const TOP = 64; // room for the bar at the top
   const LABELS_KEY = 'rpg-notes-map-labels'; // "true" while every pin's name is shown
+  const PINS_HIDDEN_KEY = 'rpg-notes-map-pins-hidden'; // "true" while the pins are hidden
 
-  let canvasEl, worldEl, imgEl, pinsEl, emptyEl, barEl, pinBtn, labelsBtn;
+  let canvasEl, worldEl, imgEl, pinsEl, emptyEl, barEl, pinBtn, labelsBtn, pinsBtn;
   let showLabels = false;
+  let pinsHidden = false;
   let callbacks = null;
   let zoom = 1;
   let panX = 0;
@@ -65,6 +69,9 @@ const MapView = (() => {
     pinBtn = container.querySelector('#map-pin-btn');
 
     pinBtn.addEventListener('click', addPin);
+    pinsBtn = container.querySelector('#map-pins-btn');
+    try { pinsHidden = localStorage.getItem(PINS_HIDDEN_KEY) === 'true'; } catch (e) { /* not remembered */ }
+    pinsBtn.addEventListener('click', () => setPinsHidden(!pinsHidden));
     labelsBtn = container.querySelector('#map-labels-btn');
     try { showLabels = localStorage.getItem(LABELS_KEY) === 'true'; } catch (e) { /* not remembered */ }
     labelsBtn.addEventListener('click', () => {
@@ -121,12 +128,22 @@ const MapView = (() => {
     const campaignId = Store.getCurrentCampaignId();
     barEl.hidden = !campaignId || !imgW;
     pinBtn.hidden = !AppMode.isEditMode();
+    pinsBtn.textContent = pinsHidden ? 'Show pins' : 'Hide pins';
+    pinsBtn.setAttribute('aria-pressed', String(!pinsHidden));
+    pinsEl.hidden = pinsHidden;
+    labelsBtn.hidden = pinsHidden;
     labelsBtn.textContent = showLabels ? 'Hide names' : 'Show names';
     labelsBtn.setAttribute('aria-pressed', String(showLabels));
     pinsEl.classList.toggle('show-labels', showLabels);
     emptyEl.hidden = !imageFailed;
     emptyEl.textContent = 'The map picture (maps/map.jpg) could not be loaded.';
     renderPins();
+  }
+
+  function setPinsHidden(hidden) {
+    pinsHidden = hidden;
+    try { localStorage.setItem(PINS_HIDDEN_KEY, String(pinsHidden)); } catch (e) { /* not remembered */ }
+    render();
   }
 
   // zooms so the whole picture fits, centered - once, so switching tabs
@@ -277,6 +294,7 @@ const MapView = (() => {
   // a new pin in the middle of the screen, unlocked, waiting for a location
   function addPin() {
     if (!AppMode.isEditMode() || !imgW) return;
+    if (pinsHidden) setPinsHidden(false); // so the new pin can be seen
     const rect = canvasEl.getBoundingClientRect();
     const spot = toPinUnits(rect.left + rect.width / 2, rect.top + TOP + (rect.height - TOP) / 2);
     Store.addBoardNode(PIN_BOARD, 'Pin', spot.x, spot.y, { locationId: '' });

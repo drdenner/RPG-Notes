@@ -25,7 +25,8 @@ renders bold and URLs become links.
   (and 🔒 in edit mode), tapping the name opens the location's mindmap,
   and tapping the dot again or an empty spot on the map hides the name. **Show names** / **Hide names** in the bar shows every
   pin's name (in view mode too), and is
-  remembered on the device. The map pans and zooms like the mindmap, and
+  remembered on the device. **Hide pins** / **Show pins** hides every pin,
+  to see the bare map (also remembered; **+ Pin** shows them again). The map pans and zooms like the mindmap, and
   the pins keep their size at any zoom
 - **Locations** tab: the locations as a nested list. **+ New location**
   adds a main location, **+** on a row adds a location inside it, **✕**
@@ -325,5 +326,6 @@ authoritative description is at the top of `store.js`.
 | `rpg-notes-drive-renames` | `{ campaignId: old name }` for renames not yet done on Drive |
 | `rpg-notes-open-tab` | The open tab: `map`, `locations`, `npcs` or `players` |
 | `rpg-notes-map-labels` | `"true"` while the Map tab shows every pin's name |
+| `rpg-notes-map-pins-hidden` | `"true"` while the Map tab's pins are hidden |
 | `rpg-notes-open-mindmap` | `{ id, from }` while a location's mindmap is open: the location, and the tab it was opened from (`map` or `locations`) |
 | `rpg-notes-player-open-<campaignId>` | Ids of the players folded out on that campaign's Players tab |
